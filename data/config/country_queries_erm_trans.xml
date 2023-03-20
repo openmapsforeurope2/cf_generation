@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="utf-8"?>
+<COUNTRY_QUERIES>
+
+  <COUNTRY>
+	<PROCESSED>FALSE</PROCESSED>
+    <CODE>BL</CODE>
+    <SELECTION_SQL_RAILRDC>
+      <SQL>true</SQL>
+    </SELECTION_SQL_RAILRDC>
+	<SELECTION_SQL_ROADL_MAIN>
+      <SQL>importance = '1' or importance = '2' or importance = '3' or rtn is not null or rtn != '' </SQL>
+    </SELECTION_SQL_ROADL_MAIN>
+	<SELECTION_SQL_ROADL_LINKABLE>
+		<SQL> nature != 'Type autoroutier' AND nature != 'Route empierrée' AND acces_vehicule_leger ='Libre' AND position_par_rapport_au_sol ='0' AND etat_de_l_objet != 'En construction' AND importance != '5'</SQL>
+	</SELECTION_SQL_ROADL_LINKABLE>
+	<SELECTION_SQL_ROADL_IMPORTANCE>
+		<SQL>true</SQL>
+	</SELECTION_SQL_ROADL_IMPORTANCE>
+  </COUNTRY>
+
+  <COUNTRY>
+	<PROCESSED>TRUE</PROCESSED>
+    <CODE>FR</CODE>
+	<CONDITION_TERRITOIRE>
+		<SQL>gcms_territoire = 'FXX'</SQL>
+	</CONDITION_TERRITOIRE>
+    <SELECTION_SQL_RAILRDC>
+      <SQL>(nature='Gare de voyageurs' or nature='Gare de fret' or nature='Gare de voyageurs et de fret') and toponyme_specification != '' </SQL>
+    </SELECTION_SQL_RAILRDC>
+	<SELECTION_SQL_ROADL_MAIN>
+      <SQL>importance = '1' or importance = '2' or importance = '3' or rtn is not null or rtn != '' </SQL>
+    </SELECTION_SQL_ROADL_MAIN>
+	<SELECTION_SQL_ROADL_LINKABLE>
+		<SQL> nature != 'Type autoroutier' AND nature != 'Route empierrée' AND acces_vehicule_leger ='Libre' AND position_par_rapport_au_sol ='0' AND etat_de_l_objet != 'En construction' AND importance != '5'</SQL>
+	</SELECTION_SQL_ROADL_LINKABLE>
+	<SELECTION_SQL_ROADL_IMPORTANCE>
+		<SQL>true</SQL>
+	</SELECTION_SQL_ROADL_IMPORTANCE>
+  </COUNTRY>
+  
+   <COUNTRY>
+	<PROCESSED>TRUE</PROCESSED>
+    <CODE>GF</CODE>
+	<CONDITION_TERRITOIRE>
+		<SQL>gcms_territoire = 'GUF'</SQL>
+	</CONDITION_TERRITOIRE>
+    <SELECTION_SQL_RAILRDC>
+      <SQL>true</SQL>
+    </SELECTION_SQL_RAILRDC>
+	<SELECTION_SQL_ROADL_MAIN>
+      <SQL>importance = '1' or importance = '2' or importance = '3' or rtn is not null or rtn != '' </SQL>
+    </SELECTION_SQL_ROADL_MAIN>
+	<SELECTION_SQL_ROADL_LINKABLE>
+		<SQL> nature != 'Type autoroutier' AND nature != 'Route empierrée' AND acces_vehicule_leger ='Libre' AND position_par_rapport_au_sol ='0' AND etat_de_l_objet != 'En construction' AND importance != '5'</SQL>
+	</SELECTION_SQL_ROADL_LINKABLE>
+	<SELECTION_SQL_ROADL_IMPORTANCE>
+		<SQL>true</SQL>
+	</SELECTION_SQL_ROADL_IMPORTANCE>
+  </COUNTRY>
+  
+   <COUNTRY>
+	<PROCESSED>TRUE</PROCESSED>
+    <CODE>PM</CODE>
+	<CONDITION_TERRITOIRE>
+		<SQL>gcms_territoire = 'SPM'</SQL>
+	</CONDITION_TERRITOIRE>
+    <SELECTION_SQL_RAILRDC>
+      <SQL>true</SQL>
+    </SELECTION_SQL_RAILRDC>
+	<SELECTION_SQL_ROADL_MAIN>
+      <SQL>importance = '1' or importance = '2' or importance = '3' or rtn is not null or rtn != '' </SQL>
+    </SELECTION_SQL_ROADL_MAIN>
+	<SELECTION_SQL_ROADL_LINKABLE>
+		<SQL> nature != 'Type autoroutier' AND nature != 'Route empierrée' AND acces_vehicule_leger ='Libre' AND position_par_rapport_au_sol ='0' AND etat_de_l_objet != 'En construction' AND importance != '5'</SQL>
+	</SELECTION_SQL_ROADL_LINKABLE>
+	<SELECTION_SQL_ROADL_IMPORTANCE>
+		<SQL>true</SQL>
+	</SELECTION_SQL_ROADL_IMPORTANCE>
+  </COUNTRY>
+  
+  <COUNTRY>
+	<PROCESSED>TRUE</PROCESSED>
+    <CODE>GP</CODE>
+	<CONDITION_TERRITOIRE>
+		<SQL>gcms_territoire = 'GLP'</SQL>
+	</CONDITION_TERRITOIRE>
+    <SELECTION_SQL_RAILRDC>
+      <SQL>true</SQL>
+    </SELECTION_SQL_RAILRDC>
+	<SELECTION_SQL_ROADL_MAIN>
+      <SQL>importance = '1' or importance = '2' or importance = '3' or rtn is not null or rtn != '' </SQL>
+    </SELECTION_SQL_ROADL_MAIN>
+	<SELECTION_SQL_ROADL_LINKABLE>
+		<SQL> nature != 'Type autoroutier' AND nature != 'Route empierrée' AND acces_vehicule_leger ='Libre' AND position_par_rapport_au_sol ='0' AND etat_de_l_objet != 'En construction' AND importance != '5'</SQL>
+	</SELECTION_SQL_ROADL_LINKABLE>
+	<SELECTION_SQL_ROADL_IMPORTANCE>
+		<SQL>true</SQL>
+	</SELECTION_SQL_ROADL_IMPORTANCE>
+  </COUNTRY>
+  
+  <COUNTRY>
+	<PROCESSED>TRUE</PROCESSED>
+    <CODE>MF</CODE>
+    <SELECTION_SQL_RAILRDC>
+      <SQL>true</SQL>
+    </SELECTION_SQL_RAILRDC>
+	<SELECTION_SQL_ROADL_MAIN>
+      <SQL>importance = '1' or importance = '2' or importance = '3' or rtn is not null or rtn != '' </SQL>
+    </SELECTION_SQL_ROADL_MAIN>
+	<SELECTION_SQL_ROADL_LINKABLE>
+		<SQL> nature != 'Type autoroutier' AND nature != 'Route empierrée' AND acces_vehicule_leger ='Libre' AND position_par_rapport_au_sol ='0' AND etat_de_l_objet != 'En construction' AND importance != '5'</SQL>
+	</SELECTION_SQL_ROADL_LINKABLE>
+	<SELECTION_SQL_ROADL_IMPORTANCE>
+		<SQL>true</SQL>
+	</SELECTION_SQL_ROADL_IMPORTANCE>
+  </COUNTRY>
+  
+  <COUNTRY>
+	<PROCESSED>TRUE</PROCESSED>
+    <CODE>MQ</CODE>
+	<CONDITION_TERRITOIRE>
+		<SQL>gcms_territoire = 'MTQ'</SQL>
+	</CONDITION_TERRITOIRE>
+    <SELECTION_SQL_RAILRDC>
+      <SQL>true</SQL>
+    </SELECTION_SQL_RAILRDC>
+	<SELECTION_SQL_ROADL_MAIN>
+      <SQL>importance = '1' or importance = '2' or importance = '3' or rtn is not null or rtn != '' </SQL>
+    </SELECTION_SQL_ROADL_MAIN>
+	<SELECTION_SQL_ROADL_LINKABLE>
+		<SQL> nature != 'Type autoroutier' AND nature != 'Route empierrée' AND acces_vehicule_leger ='Libre' AND position_par_rapport_au_sol ='0' AND etat_de_l_objet != 'En construction' AND importance != '5'</SQL>
+	</SELECTION_SQL_ROADL_LINKABLE>
+	<SELECTION_SQL_ROADL_IMPORTANCE>
+		<SQL>true</SQL>
+	</SELECTION_SQL_ROADL_IMPORTANCE>
+  </COUNTRY>
+
+  <COUNTRY>
+	<PROCESSED>TRUE</PROCESSED>
+    <CODE>RE</CODE>
+	<CONDITION_TERRITOIRE>
+		<SQL>gcms_territoire = 'REU'</SQL>
+	</CONDITION_TERRITOIRE>
+    <SELECTION_SQL_RAILRDC>
+      <SQL>true</SQL>
+    </SELECTION_SQL_RAILRDC>
+	<SELECTION_SQL_ROADL_MAIN>
+      <SQL>importance = '1' or importance = '2' or importance = '3' or rtn is not null or rtn != '' </SQL>
+    </SELECTION_SQL_ROADL_MAIN>
+	<SELECTION_SQL_ROADL_LINKABLE>
+		<SQL> nature != 'Type autoroutier' AND nature != 'Route empierrée' AND acces_vehicule_leger ='Libre' AND position_par_rapport_au_sol ='0' AND etat_de_l_objet != 'En construction' AND importance != '5'</SQL>
+	</SELECTION_SQL_ROADL_LINKABLE>
+	<SELECTION_SQL_ROADL_IMPORTANCE>
+		<SQL>true</SQL>
+	</SELECTION_SQL_ROADL_IMPORTANCE>
+  </COUNTRY>
+
+  <COUNTRY>
+	<PROCESSED>TRUE</PROCESSED>
+    <CODE>YT</CODE>
+	<CONDITION_TERRITOIRE>
+		<SQL>gcms_territoire = 'MYT'</SQL>
+	</CONDITION_TERRITOIRE>
+    <SELECTION_SQL_RAILRDC>
+      <SQL>true</SQL>
+    </SELECTION_SQL_RAILRDC>
+	<SELECTION_SQL_ROADL_MAIN>
+      <SQL>importance = '1' or importance = '2' or importance = '3' or rtn is not null or rtn != '' </SQL>
+    </SELECTION_SQL_ROADL_MAIN>
+	<SELECTION_SQL_ROADL_LINKABLE>
+		<SQL> nature != 'Type autoroutier' AND nature != 'Route empierrée' AND acces_vehicule_leger ='Libre' AND position_par_rapport_au_sol ='0' AND etat_de_l_objet != 'En construction' AND importance != '5'</SQL>
+	</SELECTION_SQL_ROADL_LINKABLE>
+	<SELECTION_SQL_ROADL_IMPORTANCE>
+		<SQL>true</SQL>
+	</SELECTION_SQL_ROADL_IMPORTANCE>
+  </COUNTRY>
+  
+</COUNTRY_QUERIES>
