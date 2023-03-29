@@ -61,8 +61,12 @@ namespace step {
 		std::string countryCodeName = _epgParams.getValue( COUNTRY_CODE ).toString();
 		std::string const boundaryTableName = _epgParams.getValue( TARGET_BOUNDARY_TABLE ).toString();
 
-		std::string edgeTargetTableName = _themeParams.getValue(SOURCE_ROAD_TABLE).toString();
+		std::string edgeSourceTableName = _themeParams.getValue(SOURCE_ROAD_TABLE).toString();
+		std::string edgeTargetTableName = getCurrentWorkingTableName(SOURCE_ROAD_TABLE);
 		_epgParams.setParameter(EDGE_TABLE, ign::data::String(edgeTargetTableName));
+
+		epg::utils::CopyTableUtils::copyEdgeTable(edgeSourceTableName, "", false);
+
 		ign::feature::sql::FeatureStorePostgis* fsEdge = _context.getFeatureStore(epg::EDGE);
 
 		// Create tmp_cf table
@@ -74,7 +78,9 @@ namespace step {
 			<< " AS TABLE " << edgeTargetTableName
 			<< " WITH NO DATA;"
 			<< "ALTER TABLE " << tmpCpTableName << " ALTER COLUMN " 
-			<< geomName << " type geometry(PointZ, 4326);";
+			<< geomName << " type geometry(PointZ, 0);"
+			<< "ALTER TABLE " << tmpCpTableName << " ALTER COLUMN "
+			<< idName << " type varchar(255);";
 
 		_context.getDataBaseManager().getConnection()->update(ss.str());
 
@@ -85,13 +91,14 @@ namespace step {
 		ss << "DROP TABLE IF EXISTS " << tmpClTableName << " ;"
 			<< "CREATE TABLE " << tmpClTableName
 			<< " AS TABLE " << edgeTargetTableName
-			<< " WITH NO DATA;";
-
+			<< " WITH NO DATA;"
+			<< "ALTER TABLE " << tmpClTableName << " ALTER COLUMN "
+			<< idName << " type varchar(255);";
 		_context.getDataBaseManager().getConnection()->update(ss.str());
 
 		// Go through objects intersecting the boundary
 		ign::feature::sql::FeatureStorePostgis* fsBoundary = _context.getDataBaseManager().getFeatureStore(boundaryTableName, idName, geomName);
-		ign::feature::FeatureIteratorPtr itBoundary = fsBoundary->getFeatures(ign::feature::FeatureFilter("country_code = 'BE#FR'"));
+		ign::feature::FeatureIteratorPtr itBoundary = fsBoundary->getFeatures(ign::feature::FeatureFilter("country = 'be#fr'"));
 
 		ign::feature::sql::FeatureStorePostgis* fsTmpCP = _context.getDataBaseManager().getFeatureStore(tmpCpTableName, idName, geomName);
 		ign::feature::sql::FeatureStorePostgis* fsTmpCL = _context.getDataBaseManager().getFeatureStore(tmpClTableName, idName, geomName);
@@ -110,7 +117,7 @@ namespace step {
 			ign::feature::FeatureIteratorPtr itFeaturesToMatch = fsEdge->getFeatures(filterFeaturesToMatch);
 
 			int numFeatures = context->getDataBaseManager().numFeatures(*fsEdge, filterFeaturesToMatch);
-			boost::progress_display display(numFeatures, std::cout, "[ Remplissage ICC autres tables ]\n");
+			boost::progress_display display(numFeatures, std::cout, "[ CREATE CONNECTING FEATURES ]\n");
 
 			while (itFeaturesToMatch->hasNext())
 			{
@@ -125,19 +132,15 @@ namespace step {
 				if (geomPtr->isNull())
 					continue;
 
-				ign::feature::Feature fCF;
-				fCF.setAttribute(natIdName, fToMatch.getAttribute(natIdName).value());
-				fCF.setAttribute(countryCodeName, fToMatch.getAttribute(countryCodeName).value());
-				fCF.setAttribute(natRoadCodeName, fToMatch.getAttribute(natRoadCodeName).value());
-				fCF.setAttribute(euRoadCodeName, fToMatch.getAttribute(euRoadCodeName).value());
+				ign::feature::Feature fCF = fToMatch;
 
 				if (geomPtr->isPoint())
 				{
 					fCF.setGeometry(geomPtr->asPoint());
 					fsTmpCP->createFeature(fCF, idGeneratorCP->next());
+					continue;
 				}
-
-
+				
 				if (geomPtr->isGeometryCollection())
 				{
 					ign::geometry::GeometryCollection geomCollect = geomPtr->asGeometryCollection();
