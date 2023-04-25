@@ -1,7 +1,7 @@
 cmake_minimum_required( VERSION 2.8.3 )
 cmake_policy(SET CMP0020 NEW)
 
-# Définition du projet
+# Definition du projet
 set(PROJECT_NAME ome2_cf_generation)
 project(${PROJECT_NAME})
 
@@ -135,11 +135,7 @@ add_executable(
 	${OME2_CF_GENERATION_SOURCES}
 )
 
-
-
-message( ${CGAL_LIBRARIES} )
-
-#Configuration de l'édition de liens
+#Configuration de l'edition de liens
 target_link_libraries(
 	${PROJECT_NAME} 
 #	${LibGeneralisation_LIBRARIES}
@@ -163,4 +159,10 @@ target_link_libraries(
 	${Boost_LIBRARIES}
 )
 
-
+#-- installation
+install(
+	TARGETS
+	${PROJECT_NAME}
+	DESTINATION
+	bin
+)

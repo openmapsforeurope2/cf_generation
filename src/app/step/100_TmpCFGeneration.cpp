@@ -124,7 +124,7 @@ namespace step {
 
 				++display;
 
-				// TO-DO : créer point d'intersection
+				// TO-DO : crï¿½er point d'intersection
 				ign::feature::Feature fToMatch = itFeaturesToMatch->next();
 				ign::geometry::LineString const& lsFToMatch = fToMatch.getGeometry().asLineString();
 				ign::geometry::Geometry* geomPtr = lsFToMatch.Intersection(lsBoundary);
@@ -158,7 +158,7 @@ namespace step {
 							fsTmpCL->createFeature(fCF, idGeneratorCL->next());
 							continue;
 						}
-						// Autre cas ?? à loguer
+						// Autre cas ?? a loguer
 
 					}
 				}
