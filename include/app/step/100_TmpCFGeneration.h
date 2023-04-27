@@ -4,6 +4,9 @@
 #include <epg/step/StepBase.h>
 #include <app/params/ThemeParameters.h>
 
+
+#include <epg/sql/tools/IdGeneratorFactory.h>
+
 namespace app{
 namespace step{
 
@@ -22,6 +25,13 @@ namespace step{
 
 		/// \brief
 		void init();
+
+
+	private:
+
+		void getCLfromBorder(ign::feature::sql::FeatureStorePostgis* fsTmpCL, epg::sql::tools::IdGeneratorInterfacePtr idGeneratorCL, ign::geometry::LineString & lsBorder, ign::geometry::GeometryPtr& buffBorder,  double distBuffer, double thresholdNoCL, double ratioInBuff, double snapOnVertexBorder);
+
+		//bool isR
 
 	};
 
