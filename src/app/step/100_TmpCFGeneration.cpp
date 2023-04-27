@@ -4,6 +4,9 @@
 #include <boost/timer.hpp>
 #include <boost/progress.hpp>
 
+//SOCLE
+#include <ign/geometry/algorithm/BufferOpGeos.h>
+
 //EPG
 #include <epg/Context.h>
 #include <epg/io/query/CountryQueriesReader.h>
@@ -11,7 +14,10 @@
 #include <epg/tools/TimeTools.h>
 #include <epg/utils/CopyTableUtils.h>
 #include <epg/utils/replaceTableName.h>
-#include <epg/sql/tools/IdGeneratorFactory.h>
+#include <epg/tools/geometry/LineStringSplitter.h>
+#include <epg/tools/geometry/interpolate.h>
+#include <epg/tools/geometry/project.h>
+#include <epg/tools/geometry/getSubLineString.h>
 
 //APP
 #include <app/tools/CountryQueryErmTrans.h>
@@ -59,7 +65,18 @@ namespace step {
 
 		// Parametres pour la definition des tables frontieres
 		std::string countryCodeName = _epgParams.getValue( COUNTRY_CODE ).toString();
-		std::string const boundaryTableName = _epgParams.getValue( TARGET_BOUNDARY_TABLE ).toString();
+		std::string const boundaryTableName = epg::utils::replaceTableName(_epgParams.getValue( TARGET_BOUNDARY_TABLE ).toString());
+		//copie de boundary dans public
+		/*epg::utils::CopyTableUtils::copyTable(
+			_epgParams.getValue(TARGET_BOUNDARY_TABLE).toString(),
+			idName,
+			geomName,
+			ign::geometry::Geometry::GeometryTypeLineString,
+			boundaryTableName,
+			"",
+			false,
+			true
+		);*/
 
 		std::string edgeSourceTableName = _themeParams.getValue(SOURCE_ROAD_TABLE).toString();
 		std::string edgeTargetTableName = getCurrentWorkingTableName(SOURCE_ROAD_TABLE);
@@ -68,6 +85,7 @@ namespace step {
 		epg::utils::CopyTableUtils::copyEdgeTable(edgeSourceTableName, "", false);
 
 		ign::feature::sql::FeatureStorePostgis* fsEdge = _context.getFeatureStore(epg::EDGE);
+
 
 		// Create tmp_cf table
 		std::string tmpCpTableName = getCurrentWorkingTableName(TMP_CP_TABLE);
@@ -93,6 +111,8 @@ namespace step {
 			<< " AS TABLE " << edgeTargetTableName
 			<< " WITH NO DATA;"
 			<< "ALTER TABLE " << tmpClTableName << " ALTER COLUMN "
+			<< geomName << " type geometry(LineString, 0);"
+			<< "ALTER TABLE " << tmpClTableName << " ALTER COLUMN "
 			<< idName << " type varchar(255);";
 		_context.getDataBaseManager().getConnection()->update(ss.str());
 
@@ -117,14 +137,14 @@ namespace step {
 			ign::feature::FeatureIteratorPtr itFeaturesToMatch = fsEdge->getFeatures(filterFeaturesToMatch);
 
 			int numFeatures = context->getDataBaseManager().numFeatures(*fsEdge, filterFeaturesToMatch);
-			boost::progress_display display(numFeatures, std::cout, "[ CREATE CONNECTING FEATURES ]\n");
+			boost::progress_display display(numFeatures, std::cout, "[ CREATE CONNECTING POINTS ]\n");
 
 			while (itFeaturesToMatch->hasNext())
 			{
 
 				++display;
 
-				// TO-DO : cr�er point d'intersection
+				// TO-DO : creer point d'intersection
 				ign::feature::Feature fToMatch = itFeaturesToMatch->next();
 				ign::geometry::LineString const& lsFToMatch = fToMatch.getGeometry().asLineString();
 				ign::geometry::Geometry* geomPtr = lsFToMatch.Intersection(lsBoundary);
@@ -152,22 +172,151 @@ namespace step {
 							fsTmpCP->createFeature(fCF, idGeneratorCP->next());
 							continue;
 						}
-						else if (geomCollect.geometryN(i).isLineString())
+						/*else if (geomCollect.geometryN(i).isLineString())
 						{
 							fCF.setGeometry(geomCollect.geometryN(i).asLineString());
 							fsTmpCL->createFeature(fCF, idGeneratorCL->next());
 							continue;
-						}
+						}*/
 						// Autre cas ?? a loguer
 
 					}
 				}
 			}
 
+
+			//CL
+			double distBuffer = 5;
+			double thresholdNoCL = 10;
+			double ratioInBuff = 0.6;
+			double snapOnVertexBorder = 2;
+
+			ign::geometry::algorithm::BufferOpGeos buffOp;
+			ign::geometry::GeometryPtr buffBorder(buffOp.buffer(lsBoundary, distBuffer, 0, ign::geometry::algorithm::BufferOpGeos::CAP_FLAT));
+			
+			getCLfromBorder(fsTmpCL, idGeneratorCL, lsBoundary, buffBorder, distBuffer, thresholdNoCL, ratioInBuff, snapOnVertexBorder);
 		}
 
 		_epgLogger.log( epg::log::TITLE, "[ END TMP CF GENERATION ] : " + epg::tools::TimeTools::getTime() );
 
 	}
+
+
+
+
 }
 }
+
+
+
+void app::step::TmpCFGeneration::getCLfromBorder(
+	ign::feature::sql::FeatureStorePostgis* fsTmpCL,
+	epg::sql::tools::IdGeneratorInterfacePtr idGeneratorCL,
+	ign::geometry::LineString & lsBorder,
+	ign::geometry::GeometryPtr& buffBorder,
+	double distBuffer,
+	double thresholdNoCL,
+	double ratioInBuff,
+	double snapOnVertexBorder
+)
+{
+
+	epg::Context* context = epg::ContextS::getInstance();
+
+	ign::feature::FeatureFilter filter;
+	filter.setExtent(lsBorder.getEnvelope().expandBy(distBuffer * 2));
+
+	ign::feature::FeatureIteratorPtr eit = context->getFeatureStore(epg::EDGE)->getFeatures(filter);
+	int numFeatures = context->getDataBaseManager().numFeatures(*context->getFeatureStore(epg::EDGE), filter);
+	boost::progress_display display(numFeatures, std::cout, "[ CREATE CONNECTING LINES ]\n");
+
+	while (eit->hasNext())
+	{
+		++display;
+		//
+		ign::feature::Feature fEdge = eit->next();
+		ign::geometry::LineString const & lsEdge = fEdge.getGeometry().asLineString();
+
+		//ign::geometry::Geometry* geomIntersect = lsEdge.Intersection(*buff);
+		std::vector<ign::geometry::LineString> vLsToProjectOnBorder;
+
+		epg::tools::geometry::LineStringSplitter lsSplitter(lsEdge);
+		lsSplitter.addCuttingGeometry(*buffBorder);
+		std::vector<ign::geometry::LineString> subEdgesBorder = lsSplitter.getSubLineStrings();
+
+		/*if (subEdgesBorder.size() == 0) { //ne devrait pas arriver, verifier si pas d'intersection que le sub contient juste l'edge
+			bool test = true;
+		}//*/
+
+
+		//pas d'intersection par le buffer
+		if (subEdgesBorder.size() == 1) {
+			//si l'edge est "proche" on consid�re qu'il est enti�rement dans le buffer et longe la fronti�re
+			if (lsEdge.distance(lsBorder) < distBuffer) {
+				//TODO//verifier que l'edge ne soit pas un edge court, inclus entierement dans le buffer avec un angle perpendiculaire qui arrive et non long le frontiere ->ne pas prendre en compte				
+				vLsToProjectOnBorder.push_back(lsEdge);	
+			}
+			continue;
+		}
+
+		int numfirstSubInBuff = -1;
+		int numlastSubInBuff = -1;
+		int lengthInBuff = 0;
+		int lengthNearByBuff = 0;
+
+		for (size_t i = 0; i < subEdgesBorder.size(); ++i) {
+			ign::geometry::LineString lsSubEdgeCurr = subEdgesBorder[i];
+
+			int numSeg = static_cast<int>(std::floor(lsSubEdgeCurr.numSegments() / 2.));
+			ign::geometry::Point interiorPointSEC = epg::tools::geometry::interpolate(lsSubEdgeCurr, numSeg, 0.5);
+			bool isSubSegInBuff = false;
+			if (buffBorder->contains(interiorPointSEC)) {
+				isSubSegInBuff = true;
+				numlastSubInBuff = i;
+
+				lengthInBuff += lsSubEdgeCurr.length();
+				if (numfirstSubInBuff < 0)
+					numfirstSubInBuff = i;
+			}
+
+			if (isSubSegInBuff || lsSubEdgeCurr.length() <= thresholdNoCL)
+				lengthNearByBuff += lsSubEdgeCurr.length();
+
+			if ((lsSubEdgeCurr.length() > thresholdNoCL && !isSubSegInBuff) || i == subEdgesBorder.size() - 1) {
+				if (lengthInBuff > ratioInBuff * lengthNearByBuff) {
+					//recup ptStart, ptFin et proj des pt sur la border
+					std::pair< int, double > pairPtCurvStartCL = epg::tools::geometry::projectAlong(lsBorder, subEdgesBorder[numfirstSubInBuff].startPoint(), snapOnVertexBorder);
+					std::pair< int, double > pairPtCurvEndCL = epg::tools::geometry::projectAlong(lsBorder, subEdgesBorder[numlastSubInBuff].endPoint(), snapOnVertexBorder);
+					//recup de la border entre ces points pour recup de la geom CL
+					ign::geometry::LineString lsCL = epg::tools::geometry::getSubLineString(pairPtCurvStartCL, pairPtCurvEndCL, lsBorder, snapOnVertexBorder);
+					vLsToProjectOnBorder.push_back(lsCL);
+				}
+
+				//reset
+				numfirstSubInBuff = -1;
+				numlastSubInBuff = -1;
+				lengthInBuff = 0;
+				lengthNearByBuff = 0;
+
+			}
+
+		}
+
+		for (size_t i = 0; i < vLsToProjectOnBorder.size(); ++i) {
+			//create CL
+			//generation de l'id CL
+			//creation du feat en copie du featEdge puis modif de la geom et de l'id
+			ign::feature::Feature featCL = fEdge;
+			featCL.setGeometry(vLsToProjectOnBorder[i]);
+			std::string idCL = idGeneratorCL->next();
+			featCL.setId(idCL);
+			if (idCL == "CONNECTINGLINE4") return;
+			fsTmpCL->createFeature(featCL, idCL);
+
+		}
+	}
+					
+
+}
+
+
