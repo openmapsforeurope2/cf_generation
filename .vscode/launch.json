@@ -1,0 +1,29 @@
+{
+    "version": "0.2.0",
+    "configurations": [{
+        "name": "(gdb) Pipe Launch",
+        "type": "cppdbg",
+        "request": "launch",
+        "program": "/usr/local/src/cf_generation/bin/ome2_cf_generationd",
+        "cwd": "/usr/local/src/cf_generation",
+        "args": ["--sp", "100", "--ep", "/usr/local/src/cf_generation/data/config/epg_parameters.ini"],
+        "stopAtEntry": true,
+        "environment": [{ "name": "config", "value": "Debug" }],
+        "externalConsole": true,
+        "sourceFileMap": {
+            "/usr/local/src/cf_generation/src":"${workspaceRoot}/src"
+        },
+        "pipeTransport": {
+            "debuggerPath": "/usr/bin/gdb",
+            "pipeProgram": "docker",
+            "pipeArgs": ["exec", "-i", "cf_generation_container", "sh", "-c"],
+            "pipeCwd": "${workspaceRoot}"
+        },
+        "MIMode": "gdb",
+        "setupCommands": [{
+            "description": "Enable pretty-printing for gdb",
+            "text": "-enable-pretty-printing",
+            "ignoreFailures": true
+        }]
+    }, ]
+}

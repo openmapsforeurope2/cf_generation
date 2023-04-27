@@ -5,7 +5,6 @@ cmake_policy(SET CMP0020 NEW)
 set(PROJECT_NAME ome2_cf_generation)
 project(${PROJECT_NAME})
 
-
 FIND_PATH(SOCLE_EXTERN_ROOT NAMES SocleExterns.cmake
 	PATHS $ENV{SOCLE_EXTERN_ROOT}
 	PATHS ../Lib/SOCLE_WORKSPACE/extern-1.0
@@ -134,6 +133,7 @@ add_executable(
 	${OME2_CF_GENERATION_HEADERS}
 	${OME2_CF_GENERATION_SOURCES}
 )
+set_target_properties(${PROJECT_NAME} PROPERTIES DEBUG_POSTFIX "d")
 
 #Configuration de l'edition de liens
 target_link_libraries(
