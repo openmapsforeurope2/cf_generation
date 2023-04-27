@@ -3,9 +3,11 @@
 ### Installation Docker
 sudo apt-get update
 sudo apt-get docker docker-compose
+
 sudo groupadd docker
 sudo usermod -aG docker ${USER}
 sudo nano /etc/docker/daemon
++eventuellement: sudo chmod 666 /var/run/docker.sock
 
 { 
   "dns": ["172.21.2.14"],
