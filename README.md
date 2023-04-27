@@ -49,6 +49,8 @@ cd /ome2/dev/libepg/docker
 docker-compose up
 
 ### cf_generation
+cd /ome2/dev
+git clone https://github.com/openmapsforeurope2/cf_generation.git ./cf_generation
 cd cf_generation/
 ./build-docker-image.sh
 
