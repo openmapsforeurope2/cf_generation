@@ -29,10 +29,11 @@ namespace step{
 
 	private:
 
-		void getCLfromBorder(ign::feature::sql::FeatureStorePostgis* fsTmpCL, epg::sql::tools::IdGeneratorInterfacePtr idGeneratorCL, ign::geometry::LineString & lsBorder, ign::geometry::GeometryPtr& buffBorder,  double distBuffer, double thresholdNoCL, double ratioInBuff, double snapOnVertexBorder);
+		void getCLfromBorder(ign::feature::sql::FeatureStorePostgis* fsTmpCL, epg::sql::tools::IdGeneratorInterfacePtr idGeneratorCL, ign::geometry::LineString & lsBorder, ign::geometry::GeometryPtr& buffBorder,  double distBuffer, double thresholdNoCL, double angleMax, double ratioInBuff, double snapOnVertexBorder);
 
-		//bool isR
+		double getAngleEdgeWithBorder(ign::geometry::LineString& lsEdge, ign::geometry::LineString& lsBorder);
 
+		void getGeomCL(ign::geometry::LineString& lsCL, ign::geometry::LineString& lsBorder, ign::geometry::Point ptStartToProject, ign::geometry::Point ptEndToProject, double snapOnVertexBorder);
 	};
 
 }
