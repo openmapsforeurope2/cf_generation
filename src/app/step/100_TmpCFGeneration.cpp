@@ -139,57 +139,6 @@ namespace step {
 			ign::feature::Feature fBoundary = itBoundary->next();
 			ign::geometry::LineString lsBoundary = fBoundary.getGeometry().asLineString();
 
-			ign::feature::FeatureFilter filterFeaturesToMatch("ST_INTERSECTS(" + geomName + ", '" + lsBoundary.toString() + "')");
-			ign::feature::FeatureIteratorPtr itFeaturesToMatch = fsEdge->getFeatures(filterFeaturesToMatch);
-
-			int numFeatures = context->getDataBaseManager().numFeatures(*fsEdge, filterFeaturesToMatch);
-			boost::progress_display display(numFeatures, std::cout, "[ CREATE CONNECTING POINTS ]\n");
-
-			while (itFeaturesToMatch->hasNext())
-			{
-
-				++display;
-
-				// TO-DO : creer point d'intersection
-				ign::feature::Feature fToMatch = itFeaturesToMatch->next();
-				ign::geometry::LineString const& lsFToMatch = fToMatch.getGeometry().asLineString();
-				ign::geometry::Geometry* geomPtr = lsFToMatch.Intersection(lsBoundary);
-
-				if (geomPtr->isNull())
-					continue;
-
-				ign::feature::Feature fCF = fToMatch;
-
-				if (geomPtr->isPoint())
-				{
-					fCF.setGeometry(geomPtr->asPoint());
-					fsTmpCP->createFeature(fCF, idGeneratorCP->next());
-					continue;
-				}
-				
-				if (geomPtr->isGeometryCollection())
-				{
-					ign::geometry::GeometryCollection geomCollect = geomPtr->asGeometryCollection();
-					for (size_t i = 0; i < geomCollect.numGeometries(); ++i)
-					{
-						if (geomCollect.geometryN(i).isPoint())
-						{
-							fCF.setGeometry(geomCollect.geometryN(i).asPoint());
-							fsTmpCP->createFeature(fCF, idGeneratorCP->next());
-							continue;
-						}
-						/*else if (geomCollect.geometryN(i).isLineString())
-						{
-							fCF.setGeometry(geomCollect.geometryN(i).asLineString());
-							fsTmpCL->createFeature(fCF, idGeneratorCL->next());
-							continue;
-						}*/
-						// Autre cas ?? a loguer
-
-					}
-				}
-			}
-
 
 			//CL
 			double distBuffer = 5;
@@ -201,11 +150,15 @@ namespace step {
 
 			ign::geometry::algorithm::BufferOpGeos buffOp;
 			ign::geometry::GeometryPtr buffBorder(buffOp.buffer(lsBoundary, distBuffer, 0, ign::geometry::algorithm::BufferOpGeos::CAP_FLAT));
-			
+
 			ign::feature::Feature fBuff;
 			fBuff.setGeometry(buffBorder->clone());
 			shapeLogger->writeFeature("getCLfromBorder_buffers", fBuff);
 			getCLfromBorder(fsTmpCL, idGeneratorCL, lsBoundary, buffBorder, distBuffer, thresholdNoCL, angleMaxBorder, ratioInBuff, snapOnVertexBorder);
+
+
+			getCPfromBorder(fsTmpCP, idGeneratorCP, lsBoundary, fsTmpCL);
+
 		}
 
 		shapeLogger->closeShape("getCLfromBorder_buffers");
@@ -253,29 +206,10 @@ void app::step::TmpCFGeneration::getCLfromBorder(
 		ign::feature::Feature fEdge = eit->next();
 		ign::geometry::LineString lsEdge = fEdge.getGeometry().asLineString();
 
-		//debug
-		if (fEdge.getId() == "599f9252-a266-4484-a130-3f2e2d388620" ||
-			fEdge.getId() == "69a04ff8-b7a6-4740-a2da-567e00694827" ||
-			fEdge.getId() == "ad4cb433-0869-48b0-b9d9-66b30c85d528" ||
-			fEdge.getId() == "52b6e92e-ab6f-44f3-925e-bce9436c7b63" ||
-			fEdge.getId() == "75d794fe-dbc6-4f82-a9d5-d4f0a17d341c" ||
-			fEdge.getId() == "5e8441d8-2922-4aec-b719-e41c1f6ec36b" ||
-			fEdge.getId() == "9171ec83-18a1-430a-85b5-016db06e6de9"){
-				std::string idStop = fEdge.getId();
-		}
-
-		//pkoi pas pris côté fr
-		if (fEdge.getId() == "8c10dcc7-39d0-47ca-a116-bebac4a2cb38")
-			bool bStop = true;
-		else if (fEdge.getId() == "c361908f-c8c9-4d4b-9bc9-826756ef20f5")
-			bool bStop = true;
-
-		//pkoi pas de CL ici:
-		if (fEdge.getId() == "dbb6d870-4781-43e8-860e-bbbbba68bb6a")
-			bool bStop = true;
-		else if (fEdge.getId() == "20bb78a5-0c41-4486-883a-20b6d6cd8142")
-			bool bStop = true;
-		
+		//DEBUG
+		/*if (fEdge.getId() == "dbb6d870-4781-43e8-860e-bbbbba68bb6a")
+			bool bStop = true;*/
+	
 		//ign::geometry::Geometry* geomIntersect = lsEdge.Intersection(*buff);
 		std::vector<ign::geometry::LineString> vLsProjectedOnBorder;
 
@@ -357,6 +291,73 @@ void app::step::TmpCFGeneration::getCLfromBorder(
 }
 
 
+
+
+void app::step::TmpCFGeneration::getCPfromBorder(
+	ign::feature::sql::FeatureStorePostgis* fsTmpCP,
+	epg::sql::tools::IdGeneratorInterfacePtr idGeneratorCP,
+	ign::geometry::LineString & lsBorder,
+	ign::feature::sql::FeatureStorePostgis* fsTmpCL
+)
+{
+	epg::Context* context = epg::ContextS::getInstance();
+	std::string const geomName = _epgParams.getValue(GEOM).toString();
+
+	ign::feature::FeatureFilter filterFeaturesToMatch("ST_INTERSECTS(" + geomName + ", '" + lsBorder.toString() + "')");
+	ign::feature::FeatureIteratorPtr itFeaturesToMatch = context->getFeatureStore(epg::EDGE)->getFeatures(filterFeaturesToMatch);
+
+	int numFeatures = context->getDataBaseManager().numFeatures(*context->getFeatureStore(epg::EDGE), filterFeaturesToMatch);
+	boost::progress_display display(numFeatures, std::cout, "[ CREATE CONNECTING POINTS ]\n");
+
+	while (itFeaturesToMatch->hasNext())
+	{
+		++display;
+
+		ign::feature::Feature fToMatch = itFeaturesToMatch->next();
+		ign::geometry::LineString const& lsFToMatch = fToMatch.getGeometry().asLineString();
+		ign::geometry::Geometry* geomPtr = lsFToMatch.Intersection(lsBorder);
+
+		if (geomPtr->isNull())
+			continue;
+
+		ign::feature::Feature fCF = fToMatch;
+
+		if (geomPtr->isPoint())
+		{
+			//si l'edge sert à une CL et, ne pas créer de CP?
+			bool isConnectedToCL = isEdgeIntersectedPtWithCL(fToMatch, geomPtr->asPoint(), fsTmpCL);
+			if (!isConnectedToCL) {
+				fCF.setGeometry(geomPtr->asPoint());
+				std::string idCP = idGeneratorCP->next();
+				fsTmpCP->createFeature(fCF, idCP);
+			}
+
+		}
+
+		else if (geomPtr->isGeometryCollection())
+		{
+			ign::geometry::GeometryCollection geomCollect = geomPtr->asGeometryCollection();
+			for (size_t i = 0; i < geomCollect.numGeometries(); ++i)
+			{
+				if (geomCollect.geometryN(i).isPoint())
+				{
+					ign::geometry::Point ptIntersect = geomCollect.geometryN(i).asPoint();
+					
+					bool isConnectedToCL = isEdgeIntersectedPtWithCL(fToMatch, ptIntersect, fsTmpCL);
+					if (!isConnectedToCL) {
+						fCF.setGeometry(ptIntersect);
+						std::string idCP = idGeneratorCP->next();
+						fsTmpCP->createFeature(fCF, idCP);
+					}
+				}
+			}
+		}
+	}
+
+
+
+}
+
 double app::step::TmpCFGeneration::getAngleEdgeWithBorder(
 	ign::geometry::LineString& lsEdge,
 	ign::geometry::LineString& lsBorder)
@@ -388,4 +389,22 @@ void app::step::TmpCFGeneration::getGeomCL(
 	std::pair< int, double > pairPtCurvEndCL = epg::tools::geometry::projectAlong(lsBorder, ptEndToProject, snapOnVertexBorder);
 	//recup de la border entre ces points pour recup de la geom CL
 	lsCL = epg::tools::geometry::getSubLineString(pairPtCurvStartCL, pairPtCurvEndCL, lsBorder, snapOnVertexBorder);
+}
+
+
+
+
+bool app::step::TmpCFGeneration::isEdgeIntersectedPtWithCL(ign::feature::Feature& fEdge, ign::geometry::Point ptIntersectBorder, ign::feature::sql::FeatureStorePostgis* fsTmpCL )
+{
+	std::string idLinkedEdge = fEdge.getAttribute("w_national_identifier").toString();
+	ign::feature::FeatureFilter filterIntersectCL ("w_national_identifier = '" + idLinkedEdge +"'");
+	filterIntersectCL.setExtent(ptIntersectBorder.getEnvelope().expandBy(1));
+	ign::feature::FeatureIteratorPtr itIntersectedCL = fsTmpCL->getFeatures(filterIntersectCL);
+
+	if (itIntersectedCL->hasNext()) {
+		//if(ptIntersectBorder.distance(itIntersectedCL->next().getGeometry()) < 0.1) //==0 ? ou rien, car proche de 1 on suppose que c'est de la CL l'intersection
+		return true;
+	}
+
+	return false;
 }

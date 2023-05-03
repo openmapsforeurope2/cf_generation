@@ -34,6 +34,13 @@ namespace step{
 		double getAngleEdgeWithBorder(ign::geometry::LineString& lsEdge, ign::geometry::LineString& lsBorder);
 
 		void getGeomCL(ign::geometry::LineString& lsCL, ign::geometry::LineString& lsBorder, ign::geometry::Point ptStartToProject, ign::geometry::Point ptEndToProject, double snapOnVertexBorder);
+	
+	
+		void getCPfromBorder(ign::feature::sql::FeatureStorePostgis* fsTmpCP, epg::sql::tools::IdGeneratorInterfacePtr idGeneratorCP, ign::geometry::LineString & lsBorder, ign::feature::sql::FeatureStorePostgis* fsTmpCL);
+
+
+		bool isEdgeIntersectedPtWithCL(ign::feature::Feature& fEdge, ign::geometry::Point ptIntersectBorder, ign::feature::sql::FeatureStorePostgis* fsTmpCL );
+
 	};
 
 }
