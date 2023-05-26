@@ -29,17 +29,37 @@ namespace step{
 
 	private:
 
-		void getCLfromBorder(ign::feature::sql::FeatureStorePostgis* fsTmpCL, epg::sql::tools::IdGeneratorInterfacePtr idGeneratorCL, ign::geometry::LineString & lsBorder, ign::geometry::GeometryPtr& buffBorder,  double distBuffer, double thresholdNoCL, double angleMax, double ratioInBuff, double snapOnVertexBorder);
+		void getCLfromBorder(ign::geometry::LineString & lsBorder, ign::geometry::GeometryPtr& buffBorder,  double distBuffer, double thresholdNoCL, double angleMax, double ratioInBuff, double snapOnVertexBorder);
 
 		double getAngleEdgeWithBorder(ign::geometry::LineString& lsEdge, ign::geometry::LineString& lsBorder);
 
 		void getGeomCL(ign::geometry::LineString& lsCL, ign::geometry::LineString& lsBorder, ign::geometry::Point ptStartToProject, ign::geometry::Point ptEndToProject, double snapOnVertexBorder);
 	
-	
-		void getCPfromBorder(ign::feature::sql::FeatureStorePostgis* fsTmpCP, epg::sql::tools::IdGeneratorInterfacePtr idGeneratorCP, ign::geometry::LineString & lsBorder, ign::feature::sql::FeatureStorePostgis* fsTmpCL);
+
+		void addToUndershootNearBorder(ign::geometry::LineString & lsBorder, ign::geometry::GeometryPtr& buffBorder, double distBuffer);
+
+		void getCPfromIntersectBorder(ign::geometry::LineString & lsBorder);
 
 
-		bool isEdgeIntersectedPtWithCL(ign::feature::Feature& fEdge, ign::geometry::Point ptIntersectBorder, ign::feature::sql::FeatureStorePostgis* fsTmpCL );
+
+		bool isEdgeIntersectedPtWithCL(ign::feature::Feature& fEdge, ign::geometry::Point ptIntersectBorder);
+
+
+		void mergeCPNearBy(double distMergeCP, double snapOnVertexBorder);
+
+		bool getNearestCP(ign::feature::Feature fCP,double distMergeCP, std::map < std::string, ign::feature::Feature>& mCPNear);
+
+		void addFeatAttributeMergingOnBorder(ign::feature::Feature& featMergedAttr, ign::feature::Feature& featAttrToAdd, std::string separator);
+
+	private:
+		ign::feature::sql::FeatureStorePostgis* _fsBoundary;
+		ign::feature::sql::FeatureStorePostgis* _fsTmpCP;
+		ign::feature::sql::FeatureStorePostgis* _fsTmpCL;
+
+		epg::sql::tools::IdGeneratorInterfacePtr _idGeneratorCP;
+		epg::sql::tools::IdGeneratorInterfacePtr _idGeneratorCL;
+
+		std::set<std::string> _sAttrNameToConcat;//set?
 
 	};
 

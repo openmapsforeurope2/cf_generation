@@ -13,6 +13,8 @@
 #include <epg/io/query/CountryQueriesReader.h>
 #include <epg/io/query/utils/queryUtils.h>
 #include <epg/tools/TimeTools.h>
+#include <epg/tools/FilterTools.h>
+#include <epg/tools/StringTools.h>
 #include <epg/utils/CopyTableUtils.h>
 #include <epg/utils/replaceTableName.h>
 #include <epg/tools/geometry/LineStringSplitter.h>
@@ -23,6 +25,11 @@
 
 //APP
 #include <app/tools/CountryQueryErmTrans.h>
+
+//////
+#include <ign/math/Line2T.h>
+#include <ign/math/LineT.h>
+#include <epg/tools/geometry/LineIntersector.h>
 
 
 namespace app {
@@ -49,6 +56,7 @@ namespace step {
 
 		epg::log::ShapeLogger* shapeLogger = epg::log::ShapeLoggerS::getInstance();
 		shapeLogger->addShape("getCLfromBorder_buffers", epg::log::ShapeLogger::POLYGON);
+		//shapeLogger->addShape("CPUndershoot", epg::log::ShapeLogger::POINT);
 
 
 		_epgLogger.log( epg::log::TITLE, "[ BEGIN TMP CF GENERATION ] : " + epg::tools::TimeTools::getTime() );
@@ -83,6 +91,17 @@ namespace step {
 			false,
 			true
 		);*/
+
+		std::string listAttr2concatName = _themeParams.getValue(LIST_ATTR_TO_CONCAT).toString();
+		//on recup les attribut a concat et on les mets dans un vecteur en splitant
+		std::vector<std::string> _vAttrNameToConcat;
+		epg::tools::StringTools::Split(listAttr2concatName, "/", _vAttrNameToConcat);
+		for (size_t i = 0; i < _vAttrNameToConcat.size(); ++i) {
+			_sAttrNameToConcat.insert(_vAttrNameToConcat[i]);
+		}
+
+		//mettre dans un set?
+
 
 		std::string edgeSourceTableName = _themeParams.getValue(SOURCE_ROAD_TABLE).toString();
 		std::string edgeTargetTableName = getCurrentWorkingTableName(SOURCE_ROAD_TABLE);
@@ -123,15 +142,15 @@ namespace step {
 		_context.getDataBaseManager().getConnection()->update(ss.str());
 
 		// Go through objects intersecting the boundary
-		ign::feature::sql::FeatureStorePostgis* fsBoundary = _context.getDataBaseManager().getFeatureStore(boundaryTableName, idName, geomName);
-		ign::feature::FeatureIteratorPtr itBoundary = fsBoundary->getFeatures(ign::feature::FeatureFilter("country = 'be#fr'"));
+		_fsBoundary = _context.getDataBaseManager().getFeatureStore(boundaryTableName, idName, geomName);
+		ign::feature::FeatureIteratorPtr itBoundary = _fsBoundary->getFeatures(ign::feature::FeatureFilter(countryCodeName + " = 'be#fr'"));
 
-		ign::feature::sql::FeatureStorePostgis* fsTmpCP = _context.getDataBaseManager().getFeatureStore(tmpCpTableName, idName, geomName);
-		ign::feature::sql::FeatureStorePostgis* fsTmpCL = _context.getDataBaseManager().getFeatureStore(tmpClTableName, idName, geomName);
+		_fsTmpCP = _context.getDataBaseManager().getFeatureStore(tmpCpTableName, idName, geomName);
+		_fsTmpCL = _context.getDataBaseManager().getFeatureStore(tmpClTableName, idName, geomName);
 
 		// id generator
-		epg::sql::tools::IdGeneratorInterfacePtr idGeneratorCP(epg::sql::tools::IdGeneratorFactory::getNew(*fsTmpCP, "CONNECTINGPOINT"));
-		epg::sql::tools::IdGeneratorInterfacePtr idGeneratorCL(epg::sql::tools::IdGeneratorFactory::getNew(*fsTmpCL, "CONNECTINGLINE"));
+		_idGeneratorCP = epg::sql::tools::IdGeneratorInterfacePtr(epg::sql::tools::IdGeneratorFactory::getNew(*_fsTmpCP, "CONNECTINGPOINT"));
+		_idGeneratorCL = epg::sql::tools::IdGeneratorInterfacePtr(epg::sql::tools::IdGeneratorFactory::getNew(*_fsTmpCL, "CONNECTINGLINE"));
 
 
 		while (itBoundary->hasNext())
@@ -154,28 +173,61 @@ namespace step {
 			ign::feature::Feature fBuff;
 			fBuff.setGeometry(buffBorder->clone());
 			shapeLogger->writeFeature("getCLfromBorder_buffers", fBuff);
-			getCLfromBorder(fsTmpCL, idGeneratorCL, lsBoundary, buffBorder, distBuffer, thresholdNoCL, angleMaxBorder, ratioInBuff, snapOnVertexBorder);
+			getCLfromBorder(lsBoundary, buffBorder, distBuffer, thresholdNoCL, angleMaxBorder, ratioInBuff, snapOnVertexBorder);
 
 
-			getCPfromBorder(fsTmpCP, idGeneratorCP, lsBoundary, fsTmpCL);
+			getCPfromIntersectBorder(lsBoundary);
+
+			addToUndershootNearBorder(lsBoundary, buffBorder, distBuffer);
+
+			//si CL se superpose -> ?
+
+			//CL et CP en fonction des autres pays?
+
+			//limiter les CL si passage proche frontière juste sur une section de l'edge, repart et pas de CL de l'autre pays
+
+			//si CL trop courte suppr? inf à 10m?
+
+			//fusion des CP (surtout si diff pays) proche (5m?)
+
+			//ajout de CP si pas d'intersection mais si route proche (1m?5m? taille du buffer des CL?), en direction de la frontiere? en fonction de la topo, si lié à un CL..?
+			//ex tr 87f8eb7c-391c-4c7a-ad00-58560f812d24 ou 134f5cf7-a961-4187-9417-6f0d0c38984c ?
+			//ex: cf53daf6-2486-47d0-8e74-fdca28d1670c / 4e96d959-bc8c-4e8d-a8cb-0aab4b5feb63 ou ddbf46ac-0db7-4197-af6f-d1d55676b09a
+
+			//TODO -> mutualisation des CL/CP pour les garder, si existe dans les  2 pays..?
+
+			//ajouter des CP aux extremites des CLs (surtout si pas de CP déjà créé et si un bout du edge de la CL continue hors frontière)
+			//ex:8768ef03-90f4-4996-a800-016c04796352 ou 91a58d0d-b3a6-4184-bf5c-f65b31a40398/9740a593-d695-4926-816b-2a8784a7579d
+
+			//CP 2 routes en une?
+
+			//si CP sur une CL -> snapper le CP sur le bout de la CL ou raccourcir la CL jusqu'au CP (= mettre en coherence CP/CL)
+			//rapport à la dist? ou a un rapport à la dist totale de la CL?
+
+			//si qu'un pays (pas de CL ni CP de l'autre pays) -> longueure sous un seuil on vire, compare dist tr/CL
+
+
+
+			///CL si 2 pays
+			///CP fusion si plusieurs proches (+ que deux eventuellement)
+			//
+			//
+			double distMergeCP = 5;
+			mergeCPNearBy(distMergeCP, 0);
 
 		}
 
 		shapeLogger->closeShape("getCLfromBorder_buffers");
+		//shapeLogger->closeShape("CPUndershoot");//
 		_epgLogger.log( epg::log::TITLE, "[ END TMP CF GENERATION ] : " + epg::tools::TimeTools::getTime() );
 
 	}
-
-
-
 
 }
 }
 
 
 void app::step::TmpCFGeneration::getCLfromBorder(
-	ign::feature::sql::FeatureStorePostgis* fsTmpCL,
-	epg::sql::tools::IdGeneratorInterfacePtr idGeneratorCL,
 	ign::geometry::LineString & lsBorder,
 	ign::geometry::GeometryPtr& buffBorder,
 	double distBuffer,
@@ -283,21 +335,100 @@ void app::step::TmpCFGeneration::getCLfromBorder(
 			//creation du feat en copie du featEdge puis modif de la geom et de l'id
 			ign::feature::Feature featCL = fEdge;
 			featCL.setGeometry(vLsProjectedOnBorder[i]);
-			std::string idCL = idGeneratorCL->next();
+			std::string idCL = _idGeneratorCL->next();
 			featCL.setId(idCL);
-			fsTmpCL->createFeature(featCL, idCL);
+			_fsTmpCL->createFeature(featCL, idCL);
 		}
 	}	
 }
 
 
-
-
-void app::step::TmpCFGeneration::getCPfromBorder(
-	ign::feature::sql::FeatureStorePostgis* fsTmpCP,
-	epg::sql::tools::IdGeneratorInterfacePtr idGeneratorCP,
+void app::step::TmpCFGeneration::addToUndershootNearBorder(
 	ign::geometry::LineString & lsBorder,
-	ign::feature::sql::FeatureStorePostgis* fsTmpCL
+	ign::geometry::GeometryPtr& buffBorder,
+	double distBuffer
+)
+{
+	epg::log::ShapeLogger* shapeLogger = epg::log::ShapeLoggerS::getInstance();
+	epg::Context* context = epg::ContextS::getInstance();
+	std::string const geomName = _epgParams.getValue(GEOM).toString();
+
+	ign::feature::FeatureFilter filterBuffBorder("ST_INTERSECTS(" + geomName + ", '" + buffBorder->toString() + "')");
+	ign::feature::FeatureIteratorPtr eit = context->getFeatureStore(epg::EDGE)->getFeatures(filterBuffBorder);
+	int numFeatures = context->getDataBaseManager().numFeatures(*context->getFeatureStore(epg::EDGE), filterBuffBorder);
+	boost::progress_display display(numFeatures, std::cout, "[ GET CONNECTING POINTS BY UNDERSHOOT LINES ]\n");
+
+	//recuperation des troncons qui intersect le buff de 5m
+	while (eit->hasNext())
+	{
+		++display;
+		ign::feature::Feature fEdge = eit->next();
+		ign::geometry::LineString lsEdge = fEdge.getGeometry().asLineString();
+		//si intersection border -> on fait rien
+		if (lsBorder.intersects(lsEdge))
+			//if (!lsBorder.Intersection(lsEdge)->isNull())
+			//est ce que intersects plus long que intersection?
+			continue;
+
+		double distBorder2StartPt = lsBorder.distance(lsEdge.startPoint());
+		double distBorder2EndPt = lsBorder.distance(lsEdge.endPoint());
+		ign::geometry::Point ptClosestBorder;
+		ign::math::Vec2d vecToBorder;
+		if (distBorder2StartPt < distBorder2EndPt) {
+			ptClosestBorder = lsEdge.startPoint();
+		}
+		else {
+			ptClosestBorder = lsEdge.endPoint();
+			lsEdge.reverse();
+		}
+		vecToBorder.x() = lsEdge.pointN(1).x() - ptClosestBorder.x();
+		vecToBorder.y() = lsEdge.pointN(1).y() - ptClosestBorder.y();
+		
+		//on verifie que le point est un dangle, sinon on fait rien
+		ign::feature::FeatureFilter filterArroundPt;
+		filterArroundPt.setExtent(ptClosestBorder.getEnvelope().expandBy(1));
+		ign::feature::FeatureIteratorPtr eitArroundPt = context->getFeatureStore(epg::EDGE)->getFeatures(filterArroundPt);
+		bool isPtADangle = true;
+		while (eitArroundPt->hasNext()) {
+			ign::feature::Feature featArroundPt = eitArroundPt->next();
+			if (featArroundPt.getId() == fEdge.getId())
+				continue;
+			isPtADangle = false;
+			break;
+		}
+		if (!isPtADangle)
+			continue;
+
+		ign::geometry::Point projPt;
+		std::vector< ign::geometry::Point > vPtIntersect;
+		epg::tools::geometry::LineIntersector::compute(ptClosestBorder, lsEdge.pointN(1), lsBorder, vPtIntersect);
+		double distMin = 100000;
+		for (std::vector< ign::geometry::Point >::iterator vit = vPtIntersect.begin(); vit != vPtIntersect.end(); ++vit) {
+			double dist = ptClosestBorder.distance(*vit);
+			if (dist < distMin) {
+				projPt = *vit;
+				distMin = dist;
+			}
+		}
+
+		if (ptClosestBorder.distance(projPt) > 2 * distBuffer)
+			continue;
+		if (isEdgeIntersectedPtWithCL(fEdge, projPt))
+			continue;
+
+		projPt.setZ(0);
+		ign::feature::Feature fCF = fEdge;
+		fCF.setGeometry(projPt);
+		std::string idCP = _idGeneratorCP->next();
+		fCF.setAttribute("w_step", ign::data::String("1"));
+		_fsTmpCP->createFeature(fCF, idCP);
+		//shapeLogger->writeFeature("CPUndershoot", fCF);
+	}
+}
+
+
+void app::step::TmpCFGeneration::getCPfromIntersectBorder(
+	ign::geometry::LineString & lsBorder
 )
 {
 	epg::Context* context = epg::ContextS::getInstance();
@@ -325,11 +456,11 @@ void app::step::TmpCFGeneration::getCPfromBorder(
 		if (geomPtr->isPoint())
 		{
 			//si l'edge sert à une CL et, ne pas créer de CP?
-			bool isConnectedToCL = isEdgeIntersectedPtWithCL(fToMatch, geomPtr->asPoint(), fsTmpCL);
+			bool isConnectedToCL = isEdgeIntersectedPtWithCL(fToMatch, geomPtr->asPoint());
 			if (!isConnectedToCL) {
 				fCF.setGeometry(geomPtr->asPoint());
-				std::string idCP = idGeneratorCP->next();
-				fsTmpCP->createFeature(fCF, idCP);
+				std::string idCP = _idGeneratorCP->next();
+				_fsTmpCP->createFeature(fCF, idCP);
 			}
 
 		}
@@ -343,11 +474,11 @@ void app::step::TmpCFGeneration::getCPfromBorder(
 				{
 					ign::geometry::Point ptIntersect = geomCollect.geometryN(i).asPoint();
 					
-					bool isConnectedToCL = isEdgeIntersectedPtWithCL(fToMatch, ptIntersect, fsTmpCL);
+					bool isConnectedToCL = isEdgeIntersectedPtWithCL(fToMatch, ptIntersect);
 					if (!isConnectedToCL) {
 						fCF.setGeometry(ptIntersect);
-						std::string idCP = idGeneratorCP->next();
-						fsTmpCP->createFeature(fCF, idCP);
+						std::string idCP = _idGeneratorCP->next();
+						_fsTmpCP->createFeature(fCF, idCP);
 					}
 				}
 			}
@@ -394,12 +525,15 @@ void app::step::TmpCFGeneration::getGeomCL(
 
 
 
-bool app::step::TmpCFGeneration::isEdgeIntersectedPtWithCL(ign::feature::Feature& fEdge, ign::geometry::Point ptIntersectBorder, ign::feature::sql::FeatureStorePostgis* fsTmpCL )
+bool app::step::TmpCFGeneration::isEdgeIntersectedPtWithCL(
+	ign::feature::Feature& fEdge,
+	ign::geometry::Point ptIntersectBorder
+)
 {
 	std::string idLinkedEdge = fEdge.getAttribute("w_national_identifier").toString();
 	ign::feature::FeatureFilter filterIntersectCL ("w_national_identifier = '" + idLinkedEdge +"'");
 	filterIntersectCL.setExtent(ptIntersectBorder.getEnvelope().expandBy(1));
-	ign::feature::FeatureIteratorPtr itIntersectedCL = fsTmpCL->getFeatures(filterIntersectCL);
+	ign::feature::FeatureIteratorPtr itIntersectedCL = _fsTmpCL->getFeatures(filterIntersectCL);
 
 	if (itIntersectedCL->hasNext()) {
 		//if(ptIntersectBorder.distance(itIntersectedCL->next().getGeometry()) < 0.1) //==0 ? ou rien, car proche de 1 on suppose que c'est de la CL l'intersection
@@ -408,3 +542,160 @@ bool app::step::TmpCFGeneration::isEdgeIntersectedPtWithCL(ign::feature::Feature
 
 	return false;
 }
+
+
+
+void app::step::TmpCFGeneration::mergeCPNearBy(
+	double distMergeCP,
+	double snapOnVertexBorder
+)
+{
+	epg::Context* context = epg::ContextS::getInstance();
+	std::string countryCodeName = _epgParams.getValue(COUNTRY_CODE).toString();
+
+	ign::feature::FeatureFilter filterCP;
+	ign::feature::FeatureIteratorPtr itCP = _fsTmpCP->getFeatures(filterCP);
+	int numFeatures = context->getDataBaseManager().numFeatures(*_fsTmpCP, filterCP);
+	boost::progress_display display(numFeatures, std::cout, "[ FUSION CONNECTING POINTS WITH #]\n");
+
+	std::set<std::string> sCP2Merge;
+	std::string separator = "#";
+
+	while (itCP->hasNext())
+	{
+		++display;
+
+		ign::feature::Feature fCPCurr = itCP->next();
+
+		std::string idCP = fCPCurr.getId();
+
+		if (sCP2Merge.find(idCP) != sCP2Merge.end())
+			continue;
+
+		std::map<std::string, ign::feature::Feature> mCPNear;
+		bool hasNearestCP = getNearestCP(fCPCurr, distMergeCP, mCPNear);
+		if (hasNearestCP) {
+			ign::feature::Feature fCPNew = _fsTmpCP->newFeature();
+			std::string idCPNew = _idGeneratorCP->next();
+			
+			ign::geometry::MultiPoint multiPtCP;
+
+			for (std::map<std::string, ign::feature::Feature>::iterator mit = mCPNear.begin(); mit != mCPNear.end(); ++mit) {
+				sCP2Merge.insert(mit->first);
+				multiPtCP.addGeometry(mit->second.getGeometry());
+				
+				if (mit == mCPNear.begin())
+					fCPNew = mit->second;
+				else
+					addFeatAttributeMergingOnBorder(fCPNew, mit->second, separator);
+			}
+			fCPNew.setId(idCPNew);
+			//geom
+			ign::geometry::Point ptCentroidCP = multiPtCP.asMultiPoint().getCentroid();
+			ign::feature::FeatureFilter filterBorderNearCP;// (countryCodeName + " = 'be#fr'");
+			filterBorderNearCP.setExtent(ptCentroidCP.getEnvelope().expandBy(distMergeCP));
+			ign::geometry::LineString lsBorderClosest;
+			double distMinBorder = 2*distMergeCP;
+			ign::feature::FeatureIteratorPtr fitBorder = _fsBoundary->getFeatures(filterBorderNearCP);
+			while (fitBorder->hasNext()) {
+				ign::geometry::LineString lsBorder = fitBorder->next().getGeometry().asLineString();
+				double dist = lsBorder.distance(ptCentroidCP);
+				if (dist < distMinBorder) {
+					distMinBorder = dist;
+					lsBorderClosest = lsBorder;
+				}
+			}
+			ign::geometry::Point ptCentroidOnBorderCP = epg::tools::geometry::project(lsBorderClosest, ptCentroidCP, snapOnVertexBorder);
+			ptCentroidOnBorderCP.setZ(0);
+			fCPNew.setGeometry(ptCentroidOnBorderCP);
+
+			_fsTmpCP->createFeature(fCPNew, idCPNew);
+		}			
+	}
+
+	for (std::set<std::string>::iterator sit = sCP2Merge.begin(); sit != sCP2Merge.end(); ++sit) {
+		_fsTmpCP->deleteFeature(*sit);
+	}
+}
+
+bool app::step::TmpCFGeneration::getNearestCP(
+	ign::feature::Feature fCP,
+	double distMergeCP,
+	std::map<std::string,ign::feature::Feature>& mCPNear
+)
+{
+	mCPNear[fCP.getId()] = fCP;
+	
+	std::string const idName = _epgParams.getValue(ID).toString();
+	ign::feature::FeatureFilter filterArroundCP;
+	std::string condNotAlreadyNearestCP;
+	for (std::map<std::string, ign::feature::Feature>::iterator mit = mCPNear.begin(); mit != mCPNear.end(); ++mit) {
+		epg::tools::FilterTools::addAndConditions(filterArroundCP, idName + " <> '" + mit->first + "'");	//(idName + " <> '" + fCP.getId() + "'");
+	}
+	filterArroundCP.setExtent(fCP.getGeometry().getEnvelope().expandBy(distMergeCP));
+	ign::feature::FeatureIteratorPtr itArroundCP = _fsTmpCP->getFeatures(filterArroundCP);
+	if (!itArroundCP->hasNext())
+		return false;
+	while (itArroundCP->hasNext())
+	{
+		ign::feature::Feature fCPArround = itArroundCP->next();
+		getNearestCP(fCPArround, distMergeCP, mCPNear);
+		mCPNear[fCPArround.getId()] = fCPArround;
+	}
+	return true;
+}
+
+void app::step::TmpCFGeneration::addFeatAttributeMergingOnBorder(
+	ign::feature::Feature& featMerged,
+	ign::feature::Feature& featAttrToAdd,
+	std::string separator
+)
+{
+	ign::feature::FeatureType featTypMerged = featMerged.getFeatureType();
+	//ign::feature::FeatureType featTyp2 = feat2.getFeatureType();
+	//test si featTyp1 == featTyp2 sinon msg d'erreur
+	std::vector<std::string> vAttrNames;
+	featTypMerged.getAttributeNames(vAttrNames);
+	std::string attrValueMerged;
+
+	for (size_t i = 0; i < vAttrNames.size(); ++i) {
+		std::string attrName = vAttrNames[i];
+		//std::string typeName = featMerged.getAttribute(attrName).getTypeName();
+		//faire une liste des attr de travail?
+		if (attrName == featTypMerged.getIdName() || attrName == featTypMerged.getDefaultGeometryName()
+			 || attrName == "begin_lifespan_version" || attrName == "end_lifespan_version"
+			|| attrName == "valid_from" || attrName == "valid_to"
+			|| attrName == "w_step" || attrName == "net_type"
+			)//attribut en timestamp qui sont pour l'historisation
+			continue;
+
+		std::string attrValueToMerge = featMerged.getAttribute(attrName).toString();
+		std::string attrValueToAdd = featAttrToAdd.getAttribute(attrName).toString();
+		if (_sAttrNameToConcat.find(attrName) != _sAttrNameToConcat.end()) {
+			//fichier param qui précise le type où on concat avec un  # lister les attributs (country, et num route eur et national)
+			//si même valeur on garde une fois sinon # dans l'ordre des countrycode
+
+			//TODO: organiser par ordre de country
+		if (attrValueToMerge == "null")
+			attrValueMerged = attrValueToAdd;
+		else if (attrValueToAdd == "null")
+			attrValueMerged = attrValueToMerge;
+		else	
+			attrValueMerged = attrValueToMerge + separator + attrValueToAdd;
+		}
+		else {//si même valeur on garde, sinon on laisse vide "" dans le cas des enums
+			if (attrValueToMerge == attrValueToAdd)
+				attrValueMerged = attrValueToMerge;
+			else if (attrValueToMerge == "null")
+				attrValueMerged = attrValueToAdd;
+			else if (attrValueToAdd == "null")
+				attrValueMerged = attrValueToMerge;
+			else
+				continue;// attrValueMerged = "";
+		}
+		
+		featMerged.setAttribute(attrName,ign::data::String(attrValueMerged));
+
+	}
+}
+
