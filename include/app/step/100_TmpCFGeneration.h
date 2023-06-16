@@ -51,6 +51,12 @@ namespace step{
 
 		void addFeatAttributeMergingOnBorder(ign::feature::Feature& featMergedAttr, ign::feature::Feature& featAttrToAdd, std::string separator);
 
+
+
+		void mergeCL(double distMergeCL, double snapOnVertexBorder);
+
+		bool getCLToMerge(ign::feature::Feature fCL, double distMergeCL, std::map < std::string, ign::feature::Feature>& mCL2merge, std::set<std::string>& sCountryCode);
+
 	private:
 		ign::feature::sql::FeatureStorePostgis* _fsBoundary;
 		ign::feature::sql::FeatureStorePostgis* _fsTmpCP;

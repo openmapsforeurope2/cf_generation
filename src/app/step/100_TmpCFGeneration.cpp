@@ -22,6 +22,7 @@
 #include <epg/tools/geometry/project.h>
 #include <epg/tools/geometry/getSubLineString.h>
 #include <epg/tools/geometry/angle.h>
+#include <epg/tools/geometry/SegmentIndexedGeometry.h>
 
 //APP
 #include <app/tools/CountryQueryErmTrans.h>
@@ -56,7 +57,10 @@ namespace step {
 
 		epg::log::ShapeLogger* shapeLogger = epg::log::ShapeLoggerS::getInstance();
 		shapeLogger->addShape("getCLfromBorder_buffers", epg::log::ShapeLogger::POLYGON);
-		//shapeLogger->addShape("CPUndershoot", epg::log::ShapeLogger::POINT);
+		shapeLogger->addShape("CLNotMerge", epg::log::ShapeLogger::LINESTRING);
+		shapeLogger->addShape("CLno2country", epg::log::ShapeLogger::LINESTRING);
+
+		shapeLogger->addShape("CPUndershoot", epg::log::ShapeLogger::POINT);
 
 
 		_epgLogger.log( epg::log::TITLE, "[ BEGIN TMP CF GENERATION ] : " + epg::tools::TimeTools::getTime() );
@@ -176,6 +180,10 @@ namespace step {
 			getCLfromBorder(lsBoundary, buffBorder, distBuffer, thresholdNoCL, angleMaxBorder, ratioInBuff, snapOnVertexBorder);
 
 
+			double distMergeCL = 1;
+//			mergeCL(distMergeCL, snapOnVertexBorder);
+//a faire
+
 			getCPfromIntersectBorder(lsBoundary);
 
 			addToUndershootNearBorder(lsBoundary, buffBorder, distBuffer);
@@ -218,7 +226,9 @@ namespace step {
 		}
 
 		shapeLogger->closeShape("getCLfromBorder_buffers");
-		//shapeLogger->closeShape("CPUndershoot");//
+		shapeLogger->closeShape("CLNotMerge"); 
+		shapeLogger->closeShape("CLno2country"); 
+		shapeLogger->closeShape("CPUndershoot");//
 		_epgLogger.log( epg::log::TITLE, "[ END TMP CF GENERATION ] : " + epg::tools::TimeTools::getTime() );
 
 	}
@@ -393,6 +403,9 @@ void app::step::TmpCFGeneration::addToUndershootNearBorder(
 			ign::feature::Feature featArroundPt = eitArroundPt->next();
 			if (featArroundPt.getId() == fEdge.getId())
 				continue;
+			double dist = featArroundPt.getGeometry().distance(ptClosestBorder);
+			if (dist > 0)
+				continue;
 			isPtADangle = false;
 			break;
 		}
@@ -401,6 +414,8 @@ void app::step::TmpCFGeneration::addToUndershootNearBorder(
 
 		ign::geometry::Point projPt;
 		std::vector< ign::geometry::Point > vPtIntersect;
+		epg::tools::geometry::SegmentIndexedGeometry segIndexLsBorder(&lsBorder);
+		////////////////////todo recup le bon segment de la frontiere
 		epg::tools::geometry::LineIntersector::compute(ptClosestBorder, lsEdge.pointN(1), lsBorder, vPtIntersect);
 		double distMin = 100000;
 		for (std::vector< ign::geometry::Point >::iterator vit = vPtIntersect.begin(); vit != vPtIntersect.end(); ++vit) {
@@ -420,9 +435,15 @@ void app::step::TmpCFGeneration::addToUndershootNearBorder(
 		ign::feature::Feature fCF = fEdge;
 		fCF.setGeometry(projPt);
 		std::string idCP = _idGeneratorCP->next();
-		fCF.setAttribute("w_step", ign::data::String("1"));
+		//fCF.setAttribute("w_step", ign::data::String("1"));
 		_fsTmpCP->createFeature(fCF, idCP);
-		//shapeLogger->writeFeature("CPUndershoot", fCF);
+		{
+			ign::feature::Feature fShaplog = fCF;
+			ign::geometry::Point ptProjNoZ = projPt;
+			ptProjNoZ.clearZ();
+			fShaplog.setGeometry(ptProjNoZ);
+			shapeLogger->writeFeature("CPUndershoot", fShaplog);
+		}
 	}
 }
 
@@ -628,7 +649,6 @@ bool app::step::TmpCFGeneration::getNearestCP(
 	
 	std::string const idName = _epgParams.getValue(ID).toString();
 	ign::feature::FeatureFilter filterArroundCP;
-	std::string condNotAlreadyNearestCP;
 	for (std::map<std::string, ign::feature::Feature>::iterator mit = mCPNear.begin(); mit != mCPNear.end(); ++mit) {
 		epg::tools::FilterTools::addAndConditions(filterArroundCP, idName + " <> '" + mit->first + "'");	//(idName + " <> '" + fCP.getId() + "'");
 	}
@@ -699,3 +719,122 @@ void app::step::TmpCFGeneration::addFeatAttributeMergingOnBorder(
 	}
 }
 
+
+void app::step::TmpCFGeneration::mergeCL(
+	double distMergeCL,
+	double snapOnVertexBorder
+)
+{
+	epg::log::ShapeLogger* shapeLogger = epg::log::ShapeLoggerS::getInstance();
+	epg::Context* context = epg::ContextS::getInstance();
+	std::string countryCodeName = _epgParams.getValue(COUNTRY_CODE).toString();
+
+	ign::feature::FeatureFilter filterCL;
+	ign::feature::FeatureIteratorPtr itCL = _fsTmpCL->getFeatures(filterCL);
+	int numFeatures = context->getDataBaseManager().numFeatures(*_fsTmpCL, filterCL);
+	boost::progress_display display(numFeatures, std::cout, "[ FUSION CONNECTING LINES WITH #]\n");
+
+	std::set<std::string> sCL2delete;
+	std::string separator = "#";
+
+	while (itCL->hasNext())
+	{
+		++display;
+		ign::feature::Feature fCLCurr = itCL->next();
+
+		std::string idCL = fCLCurr.getId();
+
+		if (sCL2delete.find(idCL) != sCL2delete.end())
+			continue;
+
+		std::map<std::string, ign::feature::Feature> mCL2merge;
+		std::set<std::string> sCountryCode;
+		bool hasNearestCL = getCLToMerge(fCLCurr, distMergeCL, mCL2merge, sCountryCode);
+
+		if (!hasNearestCL) {
+			sCL2delete.insert(idCL);
+			shapeLogger->writeFeature("CLNotMerge", fCLCurr);
+			continue;
+		}
+
+		if (sCountryCode.size() < 2) {
+			for (std::map<std::string, ign::feature::Feature>::iterator mit = mCL2merge.begin(); mit != mCL2merge.end(); ++mit) {
+				sCL2delete.insert(mit->first);
+				shapeLogger->writeFeature("CLno2country", mit->second);
+			}
+			continue;
+		}
+
+		ign::feature::Feature fCLNew = _fsTmpCL->newFeature();
+		std::string idCLNew = _idGeneratorCL->next();
+		ign::geometry::MultiLineString mls;
+		ign::geometry::LineString ls;
+		
+		for (std::map<std::string, ign::feature::Feature>::iterator mit = mCL2merge.begin(); mit != mCL2merge.end(); ++mit) {
+			sCL2delete.insert(mit->first);
+			if (mit == mCL2merge.begin())
+				ls = mit->second.getGeometry().asLineString();
+			else {
+				ign::geometry::Geometry* geom = ls.Union(mit->second.getGeometry().asLineString());
+				std::string typeGeomNamels = geom->getGeometryTypeName();
+				bool boolls = geom->isLineString();
+			}
+			mls.addGeometry(mit->second.getGeometry());
+			if (mit == mCL2merge.begin())
+				fCLNew = mit->second;
+			else
+				addFeatAttributeMergingOnBorder(fCLNew, mit->second, separator);
+		}
+
+		ign::geometry::Geometry* geomTest = mls.geometryN(0).Union(mls.geometryN(1));
+		std::string typeGeomName = geomTest->getGeometryTypeName();
+		bool bisLS = geomTest->isLineString();
+		//prendre intersection, puis prendre les points non dans l'intersection? (disjoint?)
+		//ou alors ceux de l'intersection?
+		//ou un centroid des startPoint et idem pour les endPoints?
+		//utiliser l'intesection et les startPoints (la dist) pour voir celui qui "allonge la CL"?
+		//mls.t
+		//fusion de la geom ?
+		//recup point ini et fin (les "plus éloignés" puis reconstruction avec projectAlong ou avec un outil qui recup les fr entre les 2
+		fCLNew.setGeometry(geomTest->asLineString());
+
+		_fsTmpCL->createFeature(fCLNew, idCLNew);
+	}
+
+	for (std::set<std::string>::iterator sit = sCL2delete.begin(); sit != sCL2delete.end(); ++sit) {
+		_fsTmpCL->deleteFeature(*sit);
+	}
+}
+
+
+
+bool app::step::TmpCFGeneration::getCLToMerge(
+	ign::feature::Feature fCL,
+	double distMergeCL,
+	std::map < std::string, ign::feature::Feature>& mCL2merge,
+	std::set<std::string>& sCountryCode
+)
+{
+	mCL2merge[fCL.getId()] = fCL;
+	std::string const idName = _epgParams.getValue(ID).toString();
+	std::string const countryCodeName = _epgParams.getValue(COUNTRY_CODE).toString();
+	ign::feature::FeatureFilter filterArroundCL;
+	for (std::map<std::string, ign::feature::Feature>::iterator mit = mCL2merge.begin(); mit != mCL2merge.end(); ++mit) {
+		epg::tools::FilterTools::addAndConditions(filterArroundCL, idName + " <> '" + mit->first + "'");
+	}
+	filterArroundCL.setExtent(fCL.getGeometry().getEnvelope());
+	ign::feature::FeatureIteratorPtr itArroundCL = _fsTmpCL->getFeatures(filterArroundCL);
+	if (!itArroundCL->hasNext())
+		return false;
+	while (itArroundCL->hasNext())
+	{
+		ign::feature::Feature fCLArround = itArroundCL->next();
+		if (fCL.getGeometry().distance(fCLArround.getGeometry()) > distMergeCL)
+			continue;
+		std::string countryCodeCL = fCLArround.getAttribute(countryCodeName).toString();
+		sCountryCode.insert(countryCodeCL);
+		getCLToMerge(fCLArround, distMergeCL, mCL2merge, sCountryCode);
+		mCL2merge[fCLArround.getId()] = fCLArround;
+	}
+	return true;
+}
