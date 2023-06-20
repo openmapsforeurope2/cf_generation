@@ -132,7 +132,9 @@ namespace step {
 			<< "ALTER TABLE " << tmpCpTableName << " ALTER COLUMN "
 			<< idName << " type varchar(255);"
 		    << "ALTER TABLE " << tmpCpTableName << " ALTER COLUMN "
-			<< countryCodeName << " type varchar(255);";
+			<< countryCodeName << " type varchar(255);"
+			<< "ALTER TABLE " << tmpCpTableName << " ALTER COLUMN "
+			<< "w_national_identifier" << " type varchar(25555);";
 
 		_context.getDataBaseManager().getConnection()->update(ss.str());
 
@@ -531,7 +533,7 @@ bool app::step::TmpCFGeneration::isEdgeIntersectedPtWithCL(
 )
 {
 	std::string idLinkedEdge = fEdge.getAttribute("w_national_identifier").toString();
-	ign::feature::FeatureFilter filterIntersectCL ("w_national_identifier = '" + idLinkedEdge +"'");
+	ign::feature::FeatureFilter filterIntersectCL ("w_national_identifier like '%" + idLinkedEdge +"%'");
 	filterIntersectCL.setExtent(ptIntersectBorder.getEnvelope().expandBy(1));
 	ign::feature::FeatureIteratorPtr itIntersectedCL = _fsTmpCL->getFeatures(filterIntersectCL);
 
