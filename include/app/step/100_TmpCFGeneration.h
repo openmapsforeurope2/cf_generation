@@ -57,6 +57,9 @@ namespace step{
 
 		bool getCLToMerge(ign::feature::Feature fCL, double distMergeCL, std::map < std::string, ign::feature::Feature>& mCL2merge, std::set<std::string>& sCountryCode);
 
+
+		void getBorderFromEdge(ign::geometry::LineString& lsEdgeOnBorder, ign::geometry::LineString& lsBorder);
+		
 	private:
 		ign::feature::sql::FeatureStorePostgis* _fsBoundary;
 		ign::feature::sql::FeatureStorePostgis* _fsTmpCP;

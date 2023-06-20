@@ -52,6 +52,9 @@ namespace step {
 	///
 	void TmpCFGeneration::onCompute( bool verbose )
 	{
+		//a mettre en param
+		std::string codeCountry1 = "be";
+		std::string codeCountry2 = "fr";
 
 		epg::Context* context = epg::ContextS::getInstance();
 
@@ -127,7 +130,9 @@ namespace step {
 			<< "ALTER TABLE " << tmpCpTableName << " ALTER COLUMN " 
 			<< geomName << " type geometry(PointZ, 0);"
 			<< "ALTER TABLE " << tmpCpTableName << " ALTER COLUMN "
-			<< idName << " type varchar(255);";
+			<< idName << " type varchar(255);"
+		    << "ALTER TABLE " << tmpCpTableName << " ALTER COLUMN "
+			<< countryCodeName << " type varchar(255);";
 
 		_context.getDataBaseManager().getConnection()->update(ss.str());
 
@@ -142,13 +147,16 @@ namespace step {
 			<< "ALTER TABLE " << tmpClTableName << " ALTER COLUMN "
 			<< geomName << " type geometry(LineString, 0);"
 			<< "ALTER TABLE " << tmpClTableName << " ALTER COLUMN "
-			<< idName << " type varchar(255);";
+			<< idName << " type varchar(255);"
+			<< "ALTER TABLE " << tmpClTableName << " ALTER COLUMN "
+			<< countryCodeName << " type varchar(255);"
+			<< "ALTER TABLE " << tmpClTableName << " ALTER COLUMN "
+			<< "w_national_identifier" << " type varchar(25555);";
 		_context.getDataBaseManager().getConnection()->update(ss.str());
 
 		// Go through objects intersecting the boundary
 		_fsBoundary = _context.getDataBaseManager().getFeatureStore(boundaryTableName, idName, geomName);
-		ign::feature::FeatureIteratorPtr itBoundary = _fsBoundary->getFeatures(ign::feature::FeatureFilter(countryCodeName + " = 'be#fr'"));
-
+		
 		_fsTmpCP = _context.getDataBaseManager().getFeatureStore(tmpCpTableName, idName, geomName);
 		_fsTmpCL = _context.getDataBaseManager().getFeatureStore(tmpClTableName, idName, geomName);
 
@@ -156,20 +164,19 @@ namespace step {
 		_idGeneratorCP = epg::sql::tools::IdGeneratorInterfacePtr(epg::sql::tools::IdGeneratorFactory::getNew(*_fsTmpCP, "CONNECTINGPOINT"));
 		_idGeneratorCL = epg::sql::tools::IdGeneratorInterfacePtr(epg::sql::tools::IdGeneratorFactory::getNew(*_fsTmpCL, "CONNECTINGLINE"));
 
+		//CL
+		double distBuffer = 5;
+		double thresholdNoCL = 10;
+		double ratioInBuff = 0.6;
+		double snapOnVertexBorder = 2;
+		double angleMaxBorder = 35;
+		angleMaxBorder = angleMaxBorder * M_PI / 180;
 
+		ign::feature::FeatureIteratorPtr itBoundary = _fsBoundary->getFeatures(ign::feature::FeatureFilter(countryCodeName + " = '"+ codeCountry1+"#"+ codeCountry2+"'"));
 		while (itBoundary->hasNext())
 		{
 			ign::feature::Feature fBoundary = itBoundary->next();
 			ign::geometry::LineString lsBoundary = fBoundary.getGeometry().asLineString();
-
-
-			//CL
-			double distBuffer = 5;
-			double thresholdNoCL = 10;
-			double ratioInBuff = 0.6;
-			double snapOnVertexBorder = 2;
-			double angleMaxBorder = 35;
-			angleMaxBorder = angleMaxBorder * M_PI / 180;
 
 			ign::geometry::algorithm::BufferOpGeos buffOp;
 			ign::geometry::GeometryPtr buffBorder(buffOp.buffer(lsBoundary, distBuffer, 0, ign::geometry::algorithm::BufferOpGeos::CAP_FLAT));
@@ -177,54 +184,31 @@ namespace step {
 			ign::feature::Feature fBuff;
 			fBuff.setGeometry(buffBorder->clone());
 			shapeLogger->writeFeature("getCLfromBorder_buffers", fBuff);
+
 			getCLfromBorder(lsBoundary, buffBorder, distBuffer, thresholdNoCL, angleMaxBorder, ratioInBuff, snapOnVertexBorder);
 
 
-			double distMergeCL = 1;
-//			mergeCL(distMergeCL, snapOnVertexBorder);
-//a faire
+		}
+
+			
+		double distMergeCL = 1;
+		mergeCL(distMergeCL, snapOnVertexBorder);
+
+		ign::feature::FeatureIteratorPtr itBoundary2 = _fsBoundary->getFeatures(ign::feature::FeatureFilter(countryCodeName + " = '" + codeCountry1 + "#" + codeCountry2 + "'"));
+		while (itBoundary2->hasNext()) {
+			ign::feature::Feature fBoundary = itBoundary2->next();
+			ign::geometry::LineString lsBoundary = fBoundary.getGeometry().asLineString();
+			ign::geometry::algorithm::BufferOpGeos buffOp;
+			ign::geometry::GeometryPtr buffBorder(buffOp.buffer(lsBoundary, distBuffer, 0, ign::geometry::algorithm::BufferOpGeos::CAP_FLAT));
 
 			getCPfromIntersectBorder(lsBoundary);
 
 			addToUndershootNearBorder(lsBoundary, buffBorder, distBuffer);
-
-			//si CL se superpose -> ?
-
-			//CL et CP en fonction des autres pays?
-
-			//limiter les CL si passage proche frontière juste sur une section de l'edge, repart et pas de CL de l'autre pays
-
-			//si CL trop courte suppr? inf à 10m?
-
-			//fusion des CP (surtout si diff pays) proche (5m?)
-
-			//ajout de CP si pas d'intersection mais si route proche (1m?5m? taille du buffer des CL?), en direction de la frontiere? en fonction de la topo, si lié à un CL..?
-			//ex tr 87f8eb7c-391c-4c7a-ad00-58560f812d24 ou 134f5cf7-a961-4187-9417-6f0d0c38984c ?
-			//ex: cf53daf6-2486-47d0-8e74-fdca28d1670c / 4e96d959-bc8c-4e8d-a8cb-0aab4b5feb63 ou ddbf46ac-0db7-4197-af6f-d1d55676b09a
-
-			//TODO -> mutualisation des CL/CP pour les garder, si existe dans les  2 pays..?
-
-			//ajouter des CP aux extremites des CLs (surtout si pas de CP déjà créé et si un bout du edge de la CL continue hors frontière)
-			//ex:8768ef03-90f4-4996-a800-016c04796352 ou 91a58d0d-b3a6-4184-bf5c-f65b31a40398/9740a593-d695-4926-816b-2a8784a7579d
-
-			//CP 2 routes en une?
-
-			//si CP sur une CL -> snapper le CP sur le bout de la CL ou raccourcir la CL jusqu'au CP (= mettre en coherence CP/CL)
-			//rapport à la dist? ou a un rapport à la dist totale de la CL?
-
-			//si qu'un pays (pas de CL ni CP de l'autre pays) -> longueure sous un seuil on vire, compare dist tr/CL
-
-
-
-			///CL si 2 pays
-			///CP fusion si plusieurs proches (+ que deux eventuellement)
-			//
-			//
-			double distMergeCP = 5;
-			mergeCPNearBy(distMergeCP, 0);
-
 		}
 
+		double distMergeCP = 5;
+		mergeCPNearBy(distMergeCP, 0);
+	
 		shapeLogger->closeShape("getCLfromBorder_buffers");
 		shapeLogger->closeShape("CLNotMerge"); 
 		shapeLogger->closeShape("CLno2country"); 
@@ -267,10 +251,6 @@ void app::step::TmpCFGeneration::getCLfromBorder(
 		//
 		ign::feature::Feature fEdge = eit->next();
 		ign::geometry::LineString lsEdge = fEdge.getGeometry().asLineString();
-
-		//DEBUG
-		/*if (fEdge.getId() == "dbb6d870-4781-43e8-860e-bbbbba68bb6a")
-			bool bStop = true;*/
 	
 		//ign::geometry::Geometry* geomIntersect = lsEdge.Intersection(*buff);
 		std::vector<ign::geometry::LineString> vLsProjectedOnBorder;
@@ -290,7 +270,6 @@ void app::step::TmpCFGeneration::getCLfromBorder(
 			}
 		}
 		else {
-
 			int numfirstSubInBuff = -1;
 			int numlastSubInBuff = -1;
 			int lengthInBuff = 0;
@@ -516,7 +495,7 @@ double app::step::TmpCFGeneration::getAngleEdgeWithBorder(
 {
 	double angleEdgWBorder;
 	ign::math::Vec2d vecEdge(lsEdge.endPoint().x() - lsEdge.startPoint().x(), lsEdge.endPoint().y() - lsEdge.startPoint().y());
-	
+
 	ign::geometry::Point ptStartProjOnBorder= epg::tools::geometry::project(lsBorder, lsEdge.startPoint(), 0);
 	ign::geometry::Point ptEndProjOnBorder = epg::tools::geometry::project(lsBorder, lsEdge.endPoint(), 0);
 	
@@ -743,6 +722,7 @@ void app::step::TmpCFGeneration::mergeCL(
 		ign::feature::Feature fCLCurr = itCL->next();
 
 		std::string idCL = fCLCurr.getId();
+		ign::geometry::LineString lsCurr = fCLCurr.getGeometry().asLineString();
 
 		if (sCL2delete.find(idCL) != sCL2delete.end())
 			continue;
@@ -767,37 +747,49 @@ void app::step::TmpCFGeneration::mergeCL(
 
 		ign::feature::Feature fCLNew = _fsTmpCL->newFeature();
 		std::string idCLNew = _idGeneratorCL->next();
-		ign::geometry::MultiLineString mls;
-		ign::geometry::LineString ls;
+
+		ign::geometry::LineString lsSE,lsSS,lsES,lsEE,lsTempCL;
+
+		ign::geometry::LineString lsBorder;
+		getBorderFromEdge(lsCurr, lsBorder);
 		
 		for (std::map<std::string, ign::feature::Feature>::iterator mit = mCL2merge.begin(); mit != mCL2merge.end(); ++mit) {
 			sCL2delete.insert(mit->first);
-			if (mit == mCL2merge.begin())
-				ls = mit->second.getGeometry().asLineString();
-			else {
-				ign::geometry::Geometry* geom = ls.Union(mit->second.getGeometry().asLineString());
-				std::string typeGeomNamels = geom->getGeometryTypeName();
-				bool boolls = geom->isLineString();
-			}
-			mls.addGeometry(mit->second.getGeometry());
-			if (mit == mCL2merge.begin())
+			if (mit == mCL2merge.begin()) {
+				lsTempCL = mit->second.getGeometry().asLineString();
 				fCLNew = mit->second;
-			else
+			}
+			else {
 				addFeatAttributeMergingOnBorder(fCLNew, mit->second, separator);
+				ign::geometry::LineString lsMit = mit->second.getGeometry().asLineString();
+				getGeomCL(lsSE, lsBorder, lsTempCL.startPoint(), lsMit.endPoint(), snapOnVertexBorder);
+				getGeomCL(lsSS, lsBorder, lsTempCL.startPoint(), lsMit.startPoint(), snapOnVertexBorder);
+				getGeomCL(lsES, lsBorder, lsTempCL.endPoint(), lsMit.startPoint(), snapOnVertexBorder);
+				getGeomCL(lsEE, lsBorder, lsTempCL.endPoint(), lsMit.endPoint(), snapOnVertexBorder);
+				double lengthMax= lsTempCL.length();
+				if (lsSE.length() > lengthMax) {
+					lsTempCL = lsSE;
+					lengthMax = lsTempCL.length();
+				}
+				if (lsSS.length() > lengthMax) {
+					lsTempCL = lsSS;
+					lengthMax = lsTempCL.length();
+				}
+				if (lsES.length() > lengthMax) {
+					lsTempCL = lsES;
+					lengthMax = lsTempCL.length();
+				}
+				if (lsEE.length() > lengthMax) {
+					lsTempCL = lsEE;
+					lengthMax = lsTempCL.length();
+				}
+				if (lsMit.length() > lengthMax) {
+					lsTempCL = lsMit;
+					lengthMax = lsTempCL.length();
+				}
+			}
 		}
-
-		ign::geometry::Geometry* geomTest = mls.geometryN(0).Union(mls.geometryN(1));
-		std::string typeGeomName = geomTest->getGeometryTypeName();
-		bool bisLS = geomTest->isLineString();
-		//prendre intersection, puis prendre les points non dans l'intersection? (disjoint?)
-		//ou alors ceux de l'intersection?
-		//ou un centroid des startPoint et idem pour les endPoints?
-		//utiliser l'intesection et les startPoints (la dist) pour voir celui qui "allonge la CL"?
-		//mls.t
-		//fusion de la geom ?
-		//recup point ini et fin (les "plus éloignés" puis reconstruction avec projectAlong ou avec un outil qui recup les fr entre les 2
-		fCLNew.setGeometry(geomTest->asLineString());
-
+		fCLNew.setGeometry(lsTempCL);
 		_fsTmpCL->createFeature(fCLNew, idCLNew);
 	}
 
@@ -815,9 +807,12 @@ bool app::step::TmpCFGeneration::getCLToMerge(
 	std::set<std::string>& sCountryCode
 )
 {
-	mCL2merge[fCL.getId()] = fCL;
 	std::string const idName = _epgParams.getValue(ID).toString();
 	std::string const countryCodeName = _epgParams.getValue(COUNTRY_CODE).toString();
+
+	mCL2merge[fCL.getId()] = fCL;
+	sCountryCode.insert(fCL.getAttribute(countryCodeName).toString());
+
 	ign::feature::FeatureFilter filterArroundCL;
 	for (std::map<std::string, ign::feature::Feature>::iterator mit = mCL2merge.begin(); mit != mCL2merge.end(); ++mit) {
 		epg::tools::FilterTools::addAndConditions(filterArroundCL, idName + " <> '" + mit->first + "'");
@@ -837,4 +832,26 @@ bool app::step::TmpCFGeneration::getCLToMerge(
 		mCL2merge[fCLArround.getId()] = fCLArround;
 	}
 	return true;
+}
+
+
+void app::step::TmpCFGeneration::getBorderFromEdge(
+	ign::geometry::LineString& lsEdgeOnBorder,
+	ign::geometry::LineString& lsBorder
+)
+{
+	ign::feature::FeatureFilter filter;//(countryCodeName + " = 'be#fr'")
+	filter.setExtent(lsEdgeOnBorder.getEnvelope());
+	ign::feature::FeatureIteratorPtr itBoundary = _fsBoundary->getFeatures(filter);
+	while (itBoundary->hasNext()) {
+		ign::feature::Feature fBorder = itBoundary->next();
+		ign::geometry::LineString lsBorderTemp = fBorder.getGeometry().asLineString();
+		double distBorder = lsEdgeOnBorder.distance(lsBorderTemp);
+		if (distBorder == 0) {
+			lsBorder = lsBorderTemp;
+			return;
+		}
+			
+	}
+
 }
