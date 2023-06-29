@@ -33,6 +33,7 @@ int main(int argc, char *argv[])
 		("help", "produce help message")
 		("c", po::value< std::string >(&epgParametersFile), "conf file")
 		("cc", po::value< std::string >(&countryCode), "country code")
+		//("th", po::value< std::string >(&countryCode), "theme")
 		;
 
 

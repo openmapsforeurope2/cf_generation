@@ -21,6 +21,7 @@
 
 		TMP_CP_TABLE,
 		TMP_CL_TABLE,
+		CF_STATUS,
 
 		LIST_ATTR_TO_CONCAT
 
@@ -46,6 +47,7 @@ namespace params{
 
 				_initParameter(TMP_CP_TABLE, "TMP_CP_TABLE");
 				_initParameter(TMP_CL_TABLE, "TMP_CL_TABLE");
+				_initParameter(CF_STATUS, "CF_STATUS");
 
 				_initParameter(LIST_ATTR_TO_CONCAT, "LIST_ATTR_TO_CONCAT");
 			}

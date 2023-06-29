@@ -41,14 +41,14 @@ namespace calcul {
 		bool verbose)
 	{
 		connectFeatGenerationOp connectFeatGenerationOp(countryCode,verbose);
-		connectFeatGenerationOp._compute(countryCode, verbose);
+		connectFeatGenerationOp._compute();
 	}
 
 
 	connectFeatGenerationOp::connectFeatGenerationOp(std::string countryCode,
 		bool verbose)
 	{
-		_init();
+		_init(countryCode, verbose);
 	}
 
 	connectFeatGenerationOp::~connectFeatGenerationOp()
@@ -64,65 +64,34 @@ namespace calcul {
 	///
 	///
 	///
-	void connectFeatGenerationOp::_init()
+	void connectFeatGenerationOp::_init(std::string countryCode, bool verbose)
 	{
 		_logger = epg::log::EpgLoggerS::getInstance();
+		_logger->log(epg::log::TITLE, "[ BEGIN INITIALIZATION ] : " + epg::tools::TimeTools::getTime());
+
+
+		epg::Context* context = epg::ContextS::getInstance();
+		params::TransParameters* themeParameters = params::TransParametersS::getInstance();
+		std::string const idName = context->getEpgParameters().getValue(ID).toString();
+		std::string const geomName = context->getEpgParameters().getValue(GEOM).toString();
+		std::string const natIdName = themeParameters->getValue(NATIONAL_IDENTIFIER).toString();
+		std::string const natRoadCodeName = themeParameters->getValue(EDGE_NATIONAL_ROAD_CODE).toString();
+		std::string const euRoadCodeName = themeParameters->getValue(EDGE_EUROPEAN_ROAD_CODE).toString();
+		std::string countryCodeName = context->getEpgParameters().getValue(COUNTRY_CODE).toString();
+
+
 		_shapeLogger = epg::log::ShapeLoggerS::getInstance();
-
-
 		_shapeLogger->addShape("getCLfromBorder_buffers", epg::log::ShapeLogger::POLYGON);
 		_shapeLogger->addShape("CLNotMerge", epg::log::ShapeLogger::LINESTRING);
 		_shapeLogger->addShape("CLno2country", epg::log::ShapeLogger::LINESTRING);
 		_shapeLogger->addShape("CPUndershoot", epg::log::ShapeLogger::POINT);
 
-	}
+
+		_countryCode = countryCode;
+		_verbose = verbose;
 
 
-	///
-	///
-	///
-	void connectFeatGenerationOp::_compute(std::string countryCode, bool verbose)
-	{
-		//a mettre en param
-		std::string codeCountry1 = "be";
-		std::string codeCountry2 = "fr";
-
-		epg::Context* context = epg::ContextS::getInstance();
-		params::TransParameters* themeParameters = params::TransParametersS::getInstance();
-
-		_logger->log( epg::log::TITLE, "[ BEGIN TMP CF GENERATION ] : " + epg::tools::TimeTools::getTime() );
-
-		std::string const idName = context->getEpgParameters().getValue( ID ).toString();
-		std::string const geomName = context->getEpgParameters().getValue( GEOM ).toString();
-
-		std::string const natIdName = themeParameters->getValue(NATIONAL_IDENTIFIER).toString();
-		std::string const natRoadCodeName = themeParameters->getValue(EDGE_NATIONAL_ROAD_CODE).toString();
-		std::string const euRoadCodeName = themeParameters->getValue(EDGE_EUROPEAN_ROAD_CODE).toString();
-
-		//Lecture du fichier de requetes
-		/*epg::io::query::CountryQueriesReader< app::tools::CountryQueryErmTrans > countryQueriesReader;
-		countryQueriesReader.read( context->getQueryFile() );
-		std::vector< app::tools::CountryQueryErmTrans > vQueries = countryQueriesReader.countryQueries();
-
-		std::string sqlProcessedCountries = epg::io::query::utils::sqlWhereProcessed( vQueries );
-		std::string sqlNotInQueryFile = epg::io::query::utils::sqlNotInQueryFile( vQueries );
-		std::string sqlInQueryFile = epg::io::query::utils::sqlInQueryFile( vQueries );*/
-
-		// Parametres pour la definition des tables frontieres
-		std::string countryCodeName = context->getEpgParameters().getValue( COUNTRY_CODE ).toString();
-		std::string const boundaryTableName = epg::utils::replaceTableName(context->getEpgParameters().getValue( TARGET_BOUNDARY_TABLE ).toString());
-		//copie de boundary dans public
-		/*epg::utils::CopyTableUtils::copyTable(
-			context->getEpgParameters().getValue(TARGET_BOUNDARY_TABLE).toString(),
-			idName,
-			geomName,
-			ign::geometry::Geometry::GeometryTypeLineString,
-			boundaryTableName,
-			"",
-			false,
-			true
-		);*/
-
+		///recuperation de la liste des attributs à concatener dans la fusion des attributs
 		std::string listAttr2concatName = themeParameters->getValue(LIST_ATTR_TO_CONCAT).toString();
 		//on recup les attribut a concat et on les mets dans un vecteur en splitant
 		std::vector<std::string> _vAttrNameToConcat;
@@ -131,64 +100,115 @@ namespace calcul {
 			_sAttrNameToConcat.insert(_vAttrNameToConcat[i]);
 		}
 
-		//mettre dans un set?
+
+		///recuperation des features
+		std::string const boundaryTableName = epg::utils::replaceTableName(context->getEpgParameters().getValue(TARGET_BOUNDARY_TABLE).toString());
+		_fsBoundary = context->getDataBaseManager().getFeatureStore(boundaryTableName, idName, geomName);
 
 
 		std::string edgeSourceTableName = themeParameters->getValue(SOURCE_ROAD_TABLE).toString();
-		
+
 		std::string edgeTargetTableName = epg::utils::replaceTableName(themeParameters->getValue(SOURCE_ROAD_TABLE).toString());
 		context->getEpgParameters().setParameter(EDGE_TABLE, ign::data::String(edgeTargetTableName));
 
 		epg::utils::CopyTableUtils::copyEdgeTable(edgeSourceTableName, "", false);
 
-		ign::feature::sql::FeatureStorePostgis* fsEdge = context->getFeatureStore(epg::EDGE);
+		_fsEdge = context->getFeatureStore(epg::EDGE);
 
+		///Create tmp_cf table
+		std::string cpTableName = epg::utils::replaceTableName(themeParameters->getValue(TMP_CP_TABLE).toString());
+
+		if (!context->getDataBaseManager().tableExists(cpTableName)) {
+			std::ostringstream ss;
+			//ss << "DROP TABLE IF EXISTS " << cpTableName << " ;"
+			ss << "CREATE TABLE " << cpTableName
+				<< " AS TABLE " << edgeTargetTableName
+				<< " WITH NO DATA;"
+				<< "ALTER TABLE " << cpTableName << " ALTER COLUMN "
+				<< geomName << " type geometry(PointZ, 0);"
+				<< "ALTER TABLE " << cpTableName << " ALTER COLUMN "
+				<< idName << " type varchar(255);"
+				<< "ALTER TABLE " << cpTableName << " ALTER COLUMN "
+				<< countryCodeName << " type varchar(255);"
+				<< "ALTER TABLE " << cpTableName << " ALTER COLUMN "
+				<< "w_national_identifier" << " type varchar(25555);"
+				<< "ALTER TABLE " << cpTableName << " ADD COLUMN "
+				<< themeParameters->getValue(CF_STATUS).toString() << " cf_status_value default 'not_edge_matched';";
+
+			context->getDataBaseManager().getConnection()->update(ss.str());
+		}
 		// Create tmp_cf table
-		std::string tmpCpTableName = epg::utils::replaceTableName(themeParameters->getValue(TMP_CP_TABLE).toString());
+		std::string clTableName = epg::utils::replaceTableName(themeParameters->getValue(TMP_CL_TABLE).toString());
+		if (!context->getDataBaseManager().tableExists(clTableName)) {
+			std::ostringstream ss;
+			//ss << "DROP TABLE IF EXISTS " << clTableName << " ;"
+			ss << "CREATE TABLE " << clTableName
+				<< " AS TABLE " << edgeTargetTableName
+				<< " WITH NO DATA;"
+				<< "ALTER TABLE " << clTableName << " ALTER COLUMN "
+				<< geomName << " type geometry(LineString, 0);"
+				<< "ALTER TABLE " << clTableName << " ALTER COLUMN "
+				<< idName << " type varchar(255);"
+				<< "ALTER TABLE " << clTableName << " ALTER COLUMN "
+				<< countryCodeName << " type varchar(255);"
+				<< "ALTER TABLE " << clTableName << " ALTER COLUMN "
+				<< "w_national_identifier" << " type varchar(25555);"
+				<< "ALTER TABLE " << clTableName << " ADD COLUMN "
+				<< themeParameters->getValue(CF_STATUS).toString() << " cf_status_value default 'not_edge_matched';";
+			context->getDataBaseManager().getConnection()->update(ss.str());
+		}
 
-		std::ostringstream ss;
-		ss << "DROP TABLE IF EXISTS " << tmpCpTableName << " ;"
-			<< "CREATE TABLE " << tmpCpTableName
-			<< " AS TABLE " << edgeTargetTableName
-			<< " WITH NO DATA;"
-			<< "ALTER TABLE " << tmpCpTableName << " ALTER COLUMN " 
-			<< geomName << " type geometry(PointZ, 0);"
-			<< "ALTER TABLE " << tmpCpTableName << " ALTER COLUMN "
-			<< idName << " type varchar(255);"
-		    << "ALTER TABLE " << tmpCpTableName << " ALTER COLUMN "
-			<< countryCodeName << " type varchar(255);"
-			<< "ALTER TABLE " << tmpCpTableName << " ALTER COLUMN "
-			<< "w_national_identifier" << " type varchar(25555);";
-
-		context->getDataBaseManager().getConnection()->update(ss.str());
-
-		// Create tmp_cf table
-		std::string tmpClTableName =  epg::utils::replaceTableName(themeParameters->getValue(TMP_CL_TABLE).toString());
-
-		ss.clear();
-		ss << "DROP TABLE IF EXISTS " << tmpClTableName << " ;"
-			<< "CREATE TABLE " << tmpClTableName
-			<< " AS TABLE " << edgeTargetTableName
-			<< " WITH NO DATA;"
-			<< "ALTER TABLE " << tmpClTableName << " ALTER COLUMN "
-			<< geomName << " type geometry(LineString, 0);"
-			<< "ALTER TABLE " << tmpClTableName << " ALTER COLUMN "
-			<< idName << " type varchar(255);"
-			<< "ALTER TABLE " << tmpClTableName << " ALTER COLUMN "
-			<< countryCodeName << " type varchar(255);"
-			<< "ALTER TABLE " << tmpClTableName << " ALTER COLUMN "
-			<< "w_national_identifier" << " type varchar(25555);";
-		context->getDataBaseManager().getConnection()->update(ss.str());
-
-		// Go through objects intersecting the boundary
-		_fsBoundary = context->getDataBaseManager().getFeatureStore(boundaryTableName, idName, geomName);
-		
-		_fsTmpCP = context->getDataBaseManager().getFeatureStore(tmpCpTableName, idName, geomName);
-		_fsTmpCL = context->getDataBaseManager().getFeatureStore(tmpClTableName, idName, geomName);
+		_fsTmpCP = context->getDataBaseManager().getFeatureStore(cpTableName, idName, geomName);
+		_fsTmpCL = context->getDataBaseManager().getFeatureStore(clTableName, idName, geomName);
 
 		// id generator
 		_idGeneratorCP = epg::sql::tools::IdGeneratorInterfacePtr(epg::sql::tools::IdGeneratorFactory::getNew(*_fsTmpCP, "CONNECTINGPOINT"));
 		_idGeneratorCL = epg::sql::tools::IdGeneratorInterfacePtr(epg::sql::tools::IdGeneratorFactory::getNew(*_fsTmpCL, "CONNECTINGLINE"));
+
+		_logger->log(epg::log::TITLE, "[ END INITIALIZATION ] : " + epg::tools::TimeTools::getTime());
+	}
+
+
+
+	///
+	///
+	///
+	void connectFeatGenerationOp::getCountryCodeDoubleFromCC(std::string countryCC, std::set<std::string>& sCountryCodeDouble)
+	{
+		//recup des icc pour un pays
+
+
+	}
+
+	///
+	///
+	///
+	void connectFeatGenerationOp::_compute()
+	{
+		_logger->log(epg::log::TITLE, "[ BEGIN CF GENERATION ] : " + epg::tools::TimeTools::getTime());
+		
+		std::set<std::string> sCountryCodeDouble;
+
+		if (_countryCode.find("#") != std::string::npos)
+			sCountryCodeDouble.insert(_countryCode);
+		else
+			getCountryCodeDoubleFromCC(_countryCode, sCountryCodeDouble);
+
+		for(std::set<std::string>::iterator sit = sCountryCodeDouble.begin(); sit != sCountryCodeDouble.end(); ++sit)
+			_computeOnDoubleCC(*sit);
+
+	}
+
+	///
+	///
+	///
+	void connectFeatGenerationOp::_computeOnDoubleCC(std::string countryCodeDouble)
+	{
+		_logger->log( epg::log::TITLE, "[ BEGIN CF GENERATION FOR "+ countryCodeDouble +" ] : " + epg::tools::TimeTools::getTime() );
+
+		epg::Context* context = epg::ContextS::getInstance();
+		std::string countryCodeName = context->getEpgParameters().getValue(COUNTRY_CODE).toString();
+
 
 		//CL
 		double distBuffer = 5;
@@ -198,45 +218,50 @@ namespace calcul {
 		double angleMaxBorder = 35;
 		angleMaxBorder = angleMaxBorder * M_PI / 180;
 
-		ign::feature::FeatureIteratorPtr itBoundary = _fsBoundary->getFeatures(ign::feature::FeatureFilter(countryCodeName + " = '"+ codeCountry1+"#"+ codeCountry2+"'"));
-		while (itBoundary->hasNext())
+		// Go through objects intersecting the boundary
 		{
-			ign::feature::Feature fBoundary = itBoundary->next();
-			ign::geometry::LineString lsBoundary = fBoundary.getGeometry().asLineString();
+			ign::feature::FeatureIteratorPtr itBoundary = _fsBoundary->getFeatures(ign::feature::FeatureFilter(countryCodeName + " = '" + countryCodeDouble + "'"));
+			while (itBoundary->hasNext())
+			{
+				ign::feature::Feature fBoundary = itBoundary->next();
+				ign::geometry::LineString lsBoundary = fBoundary.getGeometry().asLineString();
 
-			ign::geometry::algorithm::BufferOpGeos buffOp;
-			ign::geometry::GeometryPtr buffBorder(buffOp.buffer(lsBoundary, distBuffer, 0, ign::geometry::algorithm::BufferOpGeos::CAP_FLAT));
+				ign::geometry::algorithm::BufferOpGeos buffOp;
+				ign::geometry::GeometryPtr buffBorder(buffOp.buffer(lsBoundary, distBuffer, 0, ign::geometry::algorithm::BufferOpGeos::CAP_FLAT));
 
-			ign::feature::Feature fBuff;
-			fBuff.setGeometry(buffBorder->clone());
-			_shapeLogger->writeFeature("getCLfromBorder_buffers", fBuff);
+				ign::feature::Feature fBuff;
+				fBuff.setGeometry(buffBorder->clone());
+				_shapeLogger->writeFeature("getCLfromBorder_buffers", fBuff);
 
-			getCLfromBorder(lsBoundary, buffBorder, distBuffer, thresholdNoCL, angleMaxBorder, ratioInBuff, snapOnVertexBorder);
+				getCLfromBorder(lsBoundary, buffBorder, distBuffer, thresholdNoCL, angleMaxBorder, ratioInBuff, snapOnVertexBorder);
 
 
+			}
 		}
-
 			
 		double distMergeCL = 1;
 		mergeCL(distMergeCL, snapOnVertexBorder);
 
-		ign::feature::FeatureIteratorPtr itBoundary2 = _fsBoundary->getFeatures(ign::feature::FeatureFilter(countryCodeName + " = '" + codeCountry1 + "#" + codeCountry2 + "'"));
-		while (itBoundary2->hasNext()) {
-			ign::feature::Feature fBoundary = itBoundary2->next();
-			ign::geometry::LineString lsBoundary = fBoundary.getGeometry().asLineString();
-			ign::geometry::algorithm::BufferOpGeos buffOp;
-			ign::geometry::GeometryPtr buffBorder(buffOp.buffer(lsBoundary, distBuffer, 0, ign::geometry::algorithm::BufferOpGeos::CAP_FLAT));
 
-			getCPfromIntersectBorder(lsBoundary);
+		{
+			ign::feature::FeatureIteratorPtr itBoundary = _fsBoundary->getFeatures(ign::feature::FeatureFilter(countryCodeName + " = '" + countryCodeDouble + "'"));
+			while (itBoundary->hasNext()) {
+				ign::feature::Feature fBoundary = itBoundary->next();
+				ign::geometry::LineString lsBoundary = fBoundary.getGeometry().asLineString();
+				ign::geometry::algorithm::BufferOpGeos buffOp;
+				ign::geometry::GeometryPtr buffBorder(buffOp.buffer(lsBoundary, distBuffer, 0, ign::geometry::algorithm::BufferOpGeos::CAP_FLAT));
 
-			addToUndershootNearBorder(lsBoundary, buffBorder, distBuffer);
+				getCPfromIntersectBorder(lsBoundary);
+
+				addToUndershootNearBorder(lsBoundary, buffBorder, distBuffer);
+			}
 		}
 
 		double distMergeCP = 5;
 		mergeCPNearBy(distMergeCP, 0);
 	
 
-		_logger->log( epg::log::TITLE, "[ END TMP CF GENERATION ] : " + epg::tools::TimeTools::getTime() );
+		_logger->log( epg::log::TITLE, "[ END CF GENERATION FOR " + countryCodeDouble + " ] : " + epg::tools::TimeTools::getTime() );
 
 	}
 
@@ -574,6 +599,7 @@ void app::calcul::connectFeatGenerationOp::mergeCPNearBy(
 )
 {
 	epg::Context* context = epg::ContextS::getInstance();
+	params::TransParameters* themeParameters = params::TransParametersS::getInstance();
 	std::string countryCodeName = context->getEpgParameters().getValue(COUNTRY_CODE).toString();
 
 	ign::feature::FeatureFilter filterCP;
@@ -631,6 +657,7 @@ void app::calcul::connectFeatGenerationOp::mergeCPNearBy(
 			ign::geometry::Point ptCentroidOnBorderCP = epg::tools::geometry::project(lsBorderClosest, ptCentroidCP, snapOnVertexBorder);
 			ptCentroidOnBorderCP.setZ(0);
 			fCPNew.setGeometry(ptCentroidOnBorderCP);
+			fCPNew.setAttribute(themeParameters->getValue(CF_STATUS).toString(), ign::data::String("edge_matched"));
 
 			_fsTmpCP->createFeature(fCPNew, idCPNew);
 		}			
@@ -690,7 +717,7 @@ void app::calcul::connectFeatGenerationOp::addFeatAttributeMergingOnBorder(
 			|| attrName == "valid_from" || attrName == "valid_to"
 			|| attrName == "w_calcul" || attrName == "net_type"
 			|| attrName == "w_step" 
-			//|| attrName.find("w_") != -1
+			//|| attrName.find("w_") != std::string::npos 
 			)//attribut en timestamp qui sont pour l'historisation
 			continue;
 
@@ -732,6 +759,7 @@ void app::calcul::connectFeatGenerationOp::mergeCL(
 {
 	epg::log::ShapeLogger* _shapeLogger = epg::log::ShapeLoggerS::getInstance();
 	epg::Context* context = epg::ContextS::getInstance();
+	params::TransParameters* themeParameters = params::TransParametersS::getInstance();
 	std::string countryCodeName = context->getEpgParameters().getValue(COUNTRY_CODE).toString();
 
 	ign::feature::FeatureFilter filterCL;
@@ -739,7 +767,7 @@ void app::calcul::connectFeatGenerationOp::mergeCL(
 	int numFeatures = context->getDataBaseManager().numFeatures(*_fsTmpCL, filterCL);
 	boost::progress_display display(numFeatures, std::cout, "[ FUSION CONNECTING LINES WITH #]\n");
 
-	std::set<std::string> sCL2delete;
+	std::set<std::string> sCL2Merged;
 	std::string separator = "#";
 
 	while (itCL->hasNext())
@@ -750,7 +778,7 @@ void app::calcul::connectFeatGenerationOp::mergeCL(
 		std::string idCL = fCLCurr.getId();
 		ign::geometry::LineString lsCurr = fCLCurr.getGeometry().asLineString();
 
-		if (sCL2delete.find(idCL) != sCL2delete.end())
+		if (sCL2Merged.find(idCL) != sCL2Merged.end())
 			continue;
 
 		std::map<std::string, ign::feature::Feature> mCL2merge;
@@ -758,16 +786,7 @@ void app::calcul::connectFeatGenerationOp::mergeCL(
 		bool hasNearestCL = getCLToMerge(fCLCurr, distMergeCL, mCL2merge, sCountryCode);
 
 		if (!hasNearestCL) {
-			sCL2delete.insert(idCL);
 			_shapeLogger->writeFeature("CLNotMerge", fCLCurr);
-			continue;
-		}
-
-		if (sCountryCode.size() < 2) {
-			for (std::map<std::string, ign::feature::Feature>::iterator mit = mCL2merge.begin(); mit != mCL2merge.end(); ++mit) {
-				sCL2delete.insert(mit->first);
-				_shapeLogger->writeFeature("CLno2country", mit->second);
-			}
 			continue;
 		}
 
@@ -780,7 +799,7 @@ void app::calcul::connectFeatGenerationOp::mergeCL(
 		getBorderFromEdge(lsCurr, lsBorder);
 		
 		for (std::map<std::string, ign::feature::Feature>::iterator mit = mCL2merge.begin(); mit != mCL2merge.end(); ++mit) {
-			sCL2delete.insert(mit->first);
+			sCL2Merged.insert(mit->first);
 			if (mit == mCL2merge.begin()) {
 				lsTempCL = mit->second.getGeometry().asLineString();
 				fCLNew = mit->second;
@@ -815,11 +834,19 @@ void app::calcul::connectFeatGenerationOp::mergeCL(
 				}
 			}
 		}
+		if (sCountryCode.size() >= 2) {		
+			fCLNew.setAttribute(themeParameters->getValue(CF_STATUS).toString(),ign::data::String("edge_matched"));
+		}
+		else {
+			for (std::map<std::string, ign::feature::Feature>::iterator mit = mCL2merge.begin(); mit != mCL2merge.end(); ++mit) {
+				_shapeLogger->writeFeature("CLno2country", mit->second);
+			}
+		}
 		fCLNew.setGeometry(lsTempCL);
 		_fsTmpCL->createFeature(fCLNew, idCLNew);
 	}
 
-	for (std::set<std::string>::iterator sit = sCL2delete.begin(); sit != sCL2delete.end(); ++sit) {
+	for (std::set<std::string>::iterator sit = sCL2Merged.begin(); sit != sCL2Merged.end(); ++sit) {
 		_fsTmpCL->deleteFeature(*sit);
 	}
 }

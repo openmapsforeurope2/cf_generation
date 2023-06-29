@@ -22,10 +22,13 @@ namespace calcul{
 		connectFeatGenerationOp(std::string countryCode, bool verbose);
 		~connectFeatGenerationOp();
 
-		void _init();
-		void _compute(std::string countryCode, bool verbose);
+		void _init(std::string countryCode, bool verbose);
+		void _compute();
+		void _computeOnDoubleCC(std::string countryCodeDouble);
 
 
+
+		void getCountryCodeDoubleFromCC(std::string countryCC, std::set<std::string>& sCountryCodeDouble);
 
 		void getCLfromBorder(ign::geometry::LineString & lsBorder, ign::geometry::GeometryPtr& buffBorder,  double distBuffer, double thresholdNoCL, double angleMax, double ratioInBuff, double snapOnVertexBorder);
 
