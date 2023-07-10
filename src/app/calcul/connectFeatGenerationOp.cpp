@@ -107,15 +107,14 @@ namespace calcul {
 
 
 		std::string edgeSourceTableName = themeParameters->getValue(SOURCE_ROAD_TABLE).toString();
-
-		std::string edgeTargetTableName = epg::utils::replaceTableName(themeParameters->getValue(SOURCE_ROAD_TABLE).toString());
+		std::string edgeTargetTableName = "_110_" + epg::utils::replaceTableName(themeParameters->getValue(SOURCE_ROAD_TABLE).toString());
 		context->getEpgParameters().setParameter(EDGE_TABLE, ign::data::String(edgeTargetTableName));
 
 		epg::utils::CopyTableUtils::copyEdgeTable(edgeSourceTableName, "", false);
 
 		_fsEdge = context->getFeatureStore(epg::EDGE);
 
-		///Create tmp_cf table
+		///Create tmp_cp table
 		std::string cpTableName = epg::utils::replaceTableName(themeParameters->getValue(TMP_CP_TABLE).toString());
 
 		if (!context->getDataBaseManager().tableExists(cpTableName)) {
@@ -132,12 +131,16 @@ namespace calcul {
 				<< countryCodeName << " type varchar(255);"
 				<< "ALTER TABLE " << cpTableName << " ALTER COLUMN "
 				<< "w_national_identifier" << " type varchar(25555);"
+				<< "ALTER TABLE " << cpTableName << " ALTER COLUMN "
+				<< "national_road_code" << " type varchar(255);"
+				<< "ALTER TABLE " << cpTableName << " ALTER COLUMN "
+				<< "european_route_number" << " type varchar(255);"
 				<< "ALTER TABLE " << cpTableName << " ADD COLUMN "
 				<< themeParameters->getValue(CF_STATUS).toString() << " cf_status_value default 'not_edge_matched';";
 
 			context->getDataBaseManager().getConnection()->update(ss.str());
 		}
-		// Create tmp_cf table
+		// Create tmp_cl table
 		std::string clTableName = epg::utils::replaceTableName(themeParameters->getValue(TMP_CL_TABLE).toString());
 		if (!context->getDataBaseManager().tableExists(clTableName)) {
 			std::ostringstream ss;
@@ -153,6 +156,10 @@ namespace calcul {
 				<< countryCodeName << " type varchar(255);"
 				<< "ALTER TABLE " << clTableName << " ALTER COLUMN "
 				<< "w_national_identifier" << " type varchar(25555);"
+				<< "ALTER TABLE " << clTableName << " ALTER COLUMN "
+				<< "national_road_code" << " type varchar(255);"
+				<< "ALTER TABLE " << clTableName << " ALTER COLUMN "
+				<< "european_route_number" << " type varchar(255);"
 				<< "ALTER TABLE " << clTableName << " ADD COLUMN "
 				<< themeParameters->getValue(CF_STATUS).toString() << " cf_status_value default 'not_edge_matched';";
 			context->getDataBaseManager().getConnection()->update(ss.str());
@@ -224,6 +231,14 @@ namespace calcul {
 			while (itBoundary->hasNext())
 			{
 				ign::feature::Feature fBoundary = itBoundary->next();
+
+				std::string boundaryType = fBoundary.getAttribute("boundary_type").toString();
+
+				// On ne traite que les frontières de type international_boundary ou coastline_sea_limit
+				// On aurait pu filtrer en entrée mais le filtre semble très long, peut-être à cause de l'enum qui oblige à utiliser boundary_type::text like '%coastline_sea_limit%'
+				if (boundaryType != "international_boundary" && boundaryType.find("coastline_sea_limit") == -1)
+					continue;
+
 				ign::geometry::LineString lsBoundary = fBoundary.getGeometry().asLineString();
 
 				ign::geometry::algorithm::BufferOpGeos buffOp;
@@ -314,10 +329,13 @@ void app::calcul::connectFeatGenerationOp::getCLfromBorder(
 			if (lsEdge.distance(lsBorder) < distBuffer && (angleEdgBorder < angleMax || angleEdgBorder > (M_PI - angleMax) ) ) {
 				ign::geometry::LineString lsCL;
 				getGeomCL(lsCL, lsBorder, lsEdge.startPoint(), lsEdge.endPoint(), snapOnVertexBorder);
-				vLsProjectedOnBorder.push_back(lsCL);	
+				if (lsCL.numPoints() >= 2) {
+					vLsProjectedOnBorder.push_back(lsCL);
+				}
 			}
 		}
-		else {
+		else 
+		{
 			int numfirstSubInBuff = -1;
 			int numlastSubInBuff = -1;
 			int lengthInBuff = 0;
@@ -659,6 +677,17 @@ void app::calcul::connectFeatGenerationOp::mergeCPNearBy(
 			fCPNew.setGeometry(ptCentroidOnBorderCP);
 			fCPNew.setAttribute(themeParameters->getValue(CF_STATUS).toString(), ign::data::String("edge_matched"));
 
+			// Patch a supprimer quand la table aura été revue
+			fCPNew.setAttribute("vertical_level", ign::data::Integer(0));
+			fCPNew.setAttribute("maximum_height", ign::data::Integer(-999));
+			fCPNew.setAttribute("maximum_length", ign::data::Integer(-999));
+			fCPNew.setAttribute("maximum_width", ign::data::Integer(-999));
+			fCPNew.setAttribute("maximum_total_weight", ign::data::Integer(-999));
+			fCPNew.setAttribute("maximum_single_axle_weight", ign::data::Integer(-999));
+			fCPNew.setAttribute("maximum_double_axle_weight", ign::data::Integer(-999));
+			fCPNew.setAttribute("maximum_triple_axle_weight", ign::data::Integer(-999));
+
+
 			_fsTmpCP->createFeature(fCPNew, idCPNew);
 		}			
 	}
@@ -843,6 +872,17 @@ void app::calcul::connectFeatGenerationOp::mergeCL(
 			}
 		}
 		fCLNew.setGeometry(lsTempCL);
+
+		// Patch a supprimer quand la table aura été revue
+		fCLNew.setAttribute("maximum_height", ign::data::Integer(-999));
+		fCLNew.setAttribute("maximum_length", ign::data::Integer(-999));
+		fCLNew.setAttribute("maximum_width", ign::data::Integer(-999));
+		fCLNew.setAttribute("maximum_total_weight", ign::data::Integer(-999));
+		fCLNew.setAttribute("maximum_single_axle_weight", ign::data::Integer(-999));
+		fCLNew.setAttribute("maximum_double_axle_weight", ign::data::Integer(-999));
+		fCLNew.setAttribute("maximum_triple_axle_weight", ign::data::Integer(-999));
+
+
 		_fsTmpCL->createFeature(fCLNew, idCLNew);
 	}
 
@@ -901,7 +941,7 @@ void app::calcul::connectFeatGenerationOp::getBorderFromEdge(
 		ign::feature::Feature fBorder = itBoundary->next();
 		ign::geometry::LineString lsBorderTemp = fBorder.getGeometry().asLineString();
 		double distBorder = lsEdgeOnBorder.distance(lsBorderTemp);
-		if (distBorder == 0) {
+		if (distBorder < 0.1) {
 			lsBorder = lsBorderTemp;
 			return;
 		}
