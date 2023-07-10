@@ -28,7 +28,7 @@
 #include <epg/tools/geometry/LineIntersector.h>
 
 //APP
-#include <app/tools/CountryQueryErmTrans.h>
+//#include <app/tools/CountryQueryErmTrans.h>
 #include <app/params/ThemeParameters.h>
 
 
@@ -113,6 +113,9 @@ namespace calcul {
 		epg::utils::CopyTableUtils::copyEdgeTable(edgeSourceTableName, "", false);
 
 		_fsEdge = context->getFeatureStore(epg::EDGE);
+
+		_reqFilterEdges2generateCF = themeParameters->getValue(SQL_FILTER_EDGES_2_GENERATE_CF).toString();
+		//_filterEdges2generateCF.setPropertyConditions(reqFilterEdges2generateCF);
 
 		///Create tmp_cp table
 		std::string cpTableName = epg::utils::replaceTableName(themeParameters->getValue(TMP_CP_TABLE).toString());
@@ -298,11 +301,11 @@ void app::calcul::connectFeatGenerationOp::getCLfromBorder(
 	std::string const geomName = context->getEpgParameters().getValue(GEOM).toString();
 
 	ign::feature::FeatureFilter filter("ST_INTERSECTS(" + geomName + ", '" + buffBorder->toString() + "')");
-
+	epg::tools::FilterTools::addAndConditions(filter, _reqFilterEdges2generateCF);
 	//filter.setExtent(lsBorder.expandBy(distBuffer));
 
-	ign::feature::FeatureIteratorPtr eit = context->getFeatureStore(epg::EDGE)->getFeatures(filter);
-	int numFeatures = context->getDataBaseManager().numFeatures(*context->getFeatureStore(epg::EDGE), filter);
+	ign::feature::FeatureIteratorPtr eit = _fsEdge->getFeatures(filter);
+	int numFeatures = context->getDataBaseManager().numFeatures(*_fsEdge, filter);
 	boost::progress_display display(numFeatures, std::cout, "[ CREATE CONNECTING LINES ]\n");
 
 	ign::math::Vec2d vecBorder(lsBorder.endPoint().x() - lsBorder.startPoint().x(), lsBorder.endPoint().y() - lsBorder.startPoint().y());
@@ -409,8 +412,10 @@ void app::calcul::connectFeatGenerationOp::addToUndershootNearBorder(
 	std::string const geomName = context->getEpgParameters().getValue(GEOM).toString();
 
 	ign::feature::FeatureFilter filterBuffBorder("ST_INTERSECTS(" + geomName + ", '" + buffBorder->toString() + "')");
-	ign::feature::FeatureIteratorPtr eit = context->getFeatureStore(epg::EDGE)->getFeatures(filterBuffBorder);
-	int numFeatures = context->getDataBaseManager().numFeatures(*context->getFeatureStore(epg::EDGE), filterBuffBorder);
+	epg::tools::FilterTools::addAndConditions(filterBuffBorder, _reqFilterEdges2generateCF);
+
+	ign::feature::FeatureIteratorPtr eit = _fsEdge->getFeatures(filterBuffBorder);
+	int numFeatures = context->getDataBaseManager().numFeatures(*_fsEdge, filterBuffBorder);
 	boost::progress_display display(numFeatures, std::cout, "[ GET CONNECTING POINTS BY UNDERSHOOT LINES ]\n");
 
 	//recuperation des troncons qui intersect le buff de 5m
@@ -441,8 +446,9 @@ void app::calcul::connectFeatGenerationOp::addToUndershootNearBorder(
 		
 		//on verifie que le point est un dangle, sinon on fait rien
 		ign::feature::FeatureFilter filterArroundPt;
+		filterArroundPt.setPropertyConditions(_reqFilterEdges2generateCF);
 		filterArroundPt.setExtent(ptClosestBorder.getEnvelope().expandBy(1));
-		ign::feature::FeatureIteratorPtr eitArroundPt = context->getFeatureStore(epg::EDGE)->getFeatures(filterArroundPt);
+		ign::feature::FeatureIteratorPtr eitArroundPt = _fsEdge->getFeatures(filterArroundPt);
 		bool isPtADangle = true;
 		while (eitArroundPt->hasNext()) {
 			ign::feature::Feature featArroundPt = eitArroundPt->next();
@@ -501,9 +507,10 @@ void app::calcul::connectFeatGenerationOp::getCPfromIntersectBorder(
 	std::string const geomName = context->getEpgParameters().getValue(GEOM).toString();
 
 	ign::feature::FeatureFilter filterFeaturesToMatch("ST_INTERSECTS(" + geomName + ", '" + lsBorder.toString() + "')");
-	ign::feature::FeatureIteratorPtr itFeaturesToMatch = context->getFeatureStore(epg::EDGE)->getFeatures(filterFeaturesToMatch);
+	epg::tools::FilterTools::addAndConditions(filterFeaturesToMatch, _reqFilterEdges2generateCF);
+	ign::feature::FeatureIteratorPtr itFeaturesToMatch = _fsEdge->getFeatures(filterFeaturesToMatch);
 
-	int numFeatures = context->getDataBaseManager().numFeatures(*context->getFeatureStore(epg::EDGE), filterFeaturesToMatch);
+	int numFeatures = context->getDataBaseManager().numFeatures(*_fsEdge, filterFeaturesToMatch);
 	boost::progress_display display(numFeatures, std::cout, "[ CREATE CONNECTING POINTS ]\n");
 
 	while (itFeaturesToMatch->hasNext())

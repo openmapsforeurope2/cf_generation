@@ -67,6 +67,9 @@ namespace calcul{
 		ign::feature::sql::FeatureStorePostgis* _fsTmpCP;
 		ign::feature::sql::FeatureStorePostgis* _fsTmpCL;
 
+		//ign::feature::FeatureFilter _filterEdges2generateCF;
+		std::string _reqFilterEdges2generateCF;
+
 		epg::log::EpgLogger*                               _logger;
 		//--
 		epg::log::ShapeLogger*                             _shapeLogger;
