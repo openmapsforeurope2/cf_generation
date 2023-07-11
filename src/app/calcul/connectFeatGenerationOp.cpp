@@ -265,6 +265,9 @@ namespace calcul {
 			ign::feature::FeatureIteratorPtr itBoundary = _fsBoundary->getFeatures(ign::feature::FeatureFilter(countryCodeName + " = '" + countryCodeDouble + "'"));
 			while (itBoundary->hasNext()) {
 				ign::feature::Feature fBoundary = itBoundary->next();
+				std::string boundaryType = fBoundary.getAttribute("boundary_type").toString();
+				if (boundaryType != "international_boundary" && boundaryType.find("coastline_sea_limit") == -1)
+					continue;
 				ign::geometry::LineString lsBoundary = fBoundary.getGeometry().asLineString();
 				ign::geometry::algorithm::BufferOpGeos buffOp;
 				ign::geometry::GeometryPtr buffBorder(buffOp.buffer(lsBoundary, distBuffer, 0, ign::geometry::algorithm::BufferOpGeos::CAP_FLAT));
