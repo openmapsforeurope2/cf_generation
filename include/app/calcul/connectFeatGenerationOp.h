@@ -46,7 +46,8 @@ namespace calcul{
 		bool isEdgeIntersectedPtWithCL(ign::feature::Feature& fEdge, ign::geometry::Point ptIntersectBorder);
 
 
-		void mergeCPNearBy(double distMergeCP, double snapOnVertexBorder);
+		//void mergeCPNearBy(double distMergeCP, double snapOnVertexBorder);
+		void snapCPNearBy(double distMergeCP, double snapOnVertexBorder);
 
 		bool getNearestCP(ign::feature::Feature fCP,double distMergeCP, std::map < std::string, ign::feature::Feature>& mCPNear);
 

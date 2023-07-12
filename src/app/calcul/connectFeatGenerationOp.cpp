@@ -279,7 +279,8 @@ namespace calcul {
 		}
 
 		double distMergeCP = 5;
-		mergeCPNearBy(distMergeCP, 0);
+		//mergeCPNearBy(distMergeCP, 0);
+		snapCPNearBy(distMergeCP, 0);
 	
 
 		_logger->log( epg::log::TITLE, "[ END CF GENERATION FOR " + countryCodeDouble + " ] : " + epg::tools::TimeTools::getTime() );
@@ -621,7 +622,7 @@ bool app::calcul::connectFeatGenerationOp::isEdgeIntersectedPtWithCL(
 
 
 
-void app::calcul::connectFeatGenerationOp::mergeCPNearBy(
+/*void app::calcul::connectFeatGenerationOp::mergeCPNearBy(
 	double distMergeCP,
 	double snapOnVertexBorder
 )
@@ -705,6 +706,76 @@ void app::calcul::connectFeatGenerationOp::mergeCPNearBy(
 	for (std::set<std::string>::iterator sit = sCP2Merge.begin(); sit != sCP2Merge.end(); ++sit) {
 		_fsTmpCP->deleteFeature(*sit);
 	}
+}*/
+
+
+
+void app::calcul::connectFeatGenerationOp::snapCPNearBy(
+	double distMergeCP,
+	double snapOnVertexBorder
+)
+{
+	epg::Context* context = epg::ContextS::getInstance();
+	params::TransParameters* themeParameters = params::TransParametersS::getInstance();
+	std::string countryCodeName = context->getEpgParameters().getValue(COUNTRY_CODE).toString();
+
+	ign::feature::FeatureFilter filterCP;
+	ign::feature::FeatureIteratorPtr itCP = _fsTmpCP->getFeatures(filterCP);
+	int numFeatures = context->getDataBaseManager().numFeatures(*_fsTmpCP, filterCP);
+	boost::progress_display display(numFeatures, std::cout, "[ FUSION CONNECTING POINTS WITH #]\n");
+
+	std::set<std::string> sCP2Snap;
+	std::string separator = "#";
+
+	while (itCP->hasNext())
+	{
+		++display;
+
+		ign::feature::Feature fCPCurr = itCP->next();
+		std::string idCP = fCPCurr.getId();
+
+		if (sCP2Snap.find(idCP) != sCP2Snap.end())
+			continue;
+
+		std::map<std::string, ign::feature::Feature> mCPNear;
+		bool hasNearestCP = getNearestCP(fCPCurr, distMergeCP, mCPNear);
+		if (hasNearestCP) {
+			ign::geometry::MultiPoint multiPtCP;
+			for (std::map<std::string, ign::feature::Feature>::iterator mit = mCPNear.begin(); mit != mCPNear.end(); ++mit) {
+				sCP2Snap.insert(mit->first);
+				multiPtCP.addGeometry(mit->second.getGeometry());
+			}
+			
+			//geom
+			ign::geometry::Point ptCentroidCP = multiPtCP.asMultiPoint().getCentroid();
+			ign::feature::FeatureFilter filterBorderNearCP;// (countryCodeName + " = 'be#fr'");
+			filterBorderNearCP.setExtent(ptCentroidCP.getEnvelope().expandBy(distMergeCP));
+			ign::geometry::LineString lsBorderClosest;
+			double distMinBorder = 2 * distMergeCP;
+			ign::feature::FeatureIteratorPtr fitBorder = _fsBoundary->getFeatures(filterBorderNearCP);
+			while (fitBorder->hasNext()) {
+				ign::geometry::LineString lsBorder = fitBorder->next().getGeometry().asLineString();
+				double dist = lsBorder.distance(ptCentroidCP);
+				if (dist < distMinBorder) {
+					distMinBorder = dist;
+					lsBorderClosest = lsBorder;
+				}
+			}
+			ign::geometry::Point ptCentroidOnBorderCP = epg::tools::geometry::project(lsBorderClosest, ptCentroidCP, snapOnVertexBorder);
+			ptCentroidOnBorderCP.setZ(0);
+
+			//boucle sur mCPNear pour modif
+			for (std::map<std::string, ign::feature::Feature>::iterator mit = mCPNear.begin(); mit != mCPNear.end(); ++mit) {
+				ign::feature::Feature fCP2snap;
+				_fsTmpCP->getFeatureById(mit->first, fCP2snap);
+				fCP2snap.setGeometry(ptCentroidOnBorderCP);
+				fCP2snap.setAttribute(themeParameters->getValue(CF_STATUS).toString(), ign::data::String("edge_matched"));
+				_fsTmpCP->modifyFeature(fCP2snap);
+			}
+
+		}
+	}
+
 }
 
 bool app::calcul::connectFeatGenerationOp::getNearestCP(
