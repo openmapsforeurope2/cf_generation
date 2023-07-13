@@ -57,6 +57,8 @@ namespace calcul {
 		_shapeLogger->closeShape("CLNotMerge");
 		_shapeLogger->closeShape("CLno2country");
 		_shapeLogger->closeShape("CPUndershoot");
+		_shapeLogger->closeShape("Cl2mergeInMls");
+
 
 		epg::log::ShapeLoggerS::kill();
 	}
@@ -81,10 +83,13 @@ namespace calcul {
 
 
 		_shapeLogger = epg::log::ShapeLoggerS::getInstance();
+		_shapeLogger->setDataDirectory(context->getLogDirectory()+"/shapeLog");
 		_shapeLogger->addShape("getCLfromBorder_buffers", epg::log::ShapeLogger::POLYGON);
 		_shapeLogger->addShape("CLNotMerge", epg::log::ShapeLogger::LINESTRING);
 		_shapeLogger->addShape("CLno2country", epg::log::ShapeLogger::LINESTRING);
 		_shapeLogger->addShape("CPUndershoot", epg::log::ShapeLogger::POINT);
+		_shapeLogger->addShape("Cl2mergeInMls", epg::log::ShapeLogger::LINESTRING);
+
 
 
 		_countryCode = countryCode;
@@ -225,7 +230,7 @@ namespace calcul {
 		double thresholdNoCL = 10;
 		double ratioInBuff = 0.6;
 		double snapOnVertexBorder = 2;
-		double angleMaxBorder = 35;
+		double angleMaxBorder = 25;
 		angleMaxBorder = angleMaxBorder * M_PI / 180;
 
 		// Go through objects intersecting the boundary
@@ -256,9 +261,10 @@ namespace calcul {
 
 			}
 		}
-			
+
 		double distMergeCL = 1;
-		mergeCL(distMergeCL, snapOnVertexBorder);
+		//mergeCL(distMergeCL, snapOnVertexBorder); 
+		mergeIntersectingCL(countryCodeDouble, distMergeCL, snapOnVertexBorder);
 
 
 		{
@@ -280,7 +286,7 @@ namespace calcul {
 
 		double distMergeCP = 5;
 		//mergeCPNearBy(distMergeCP, 0);
-		snapCPNearBy(distMergeCP, 0);
+		snapCPNearBy(countryCodeDouble,distMergeCP, 0);
 	
 
 		_logger->log( epg::log::TITLE, "[ END CF GENERATION FOR " + countryCodeDouble + " ] : " + epg::tools::TimeTools::getTime() );
@@ -324,7 +330,6 @@ void app::calcul::connectFeatGenerationOp::getCLfromBorder(
 	
 		//ign::geometry::Geometry* geomIntersect = lsEdge.Intersection(*buff);
 		std::vector<ign::geometry::LineString> vLsProjectedOnBorder;
-
 		epg::tools::geometry::LineStringSplitter lsSplitter(lsEdge);
 		lsSplitter.addCuttingGeometry(*buffBorder);
 		std::vector<ign::geometry::LineString> subEdgesBorder = lsSplitter.getSubLineStrings();
@@ -711,6 +716,7 @@ bool app::calcul::connectFeatGenerationOp::isEdgeIntersectedPtWithCL(
 
 
 void app::calcul::connectFeatGenerationOp::snapCPNearBy(
+	std::string countryCodeDouble,
 	double distMergeCP,
 	double snapOnVertexBorder
 )
@@ -720,6 +726,11 @@ void app::calcul::connectFeatGenerationOp::snapCPNearBy(
 	std::string countryCodeName = context->getEpgParameters().getValue(COUNTRY_CODE).toString();
 
 	ign::feature::FeatureFilter filterCP;
+	std::vector<std::string> vCountriesCodeName;
+	epg::tools::StringTools::Split(countryCodeDouble, "#", vCountriesCodeName);
+	for (size_t i = 0; i < vCountriesCodeName.size(); ++i) {
+		epg::tools::FilterTools::addOrConditions(filterCP, countryCodeName + " = '" + vCountriesCodeName[i] + "'");
+	}
 	ign::feature::FeatureIteratorPtr itCP = _fsTmpCP->getFeatures(filterCP);
 	int numFeatures = context->getDataBaseManager().numFeatures(*_fsTmpCP, filterCP);
 	boost::progress_display display(numFeatures, std::cout, "[ FUSION CONNECTING POINTS WITH #]\n");
@@ -862,7 +873,130 @@ void app::calcul::connectFeatGenerationOp::addFeatAttributeMergingOnBorder(
 }
 
 
-void app::calcul::connectFeatGenerationOp::mergeCL(
+void app::calcul::connectFeatGenerationOp::mergeIntersectingCL(
+	std::string countryCodeDouble,
+	double distMergeCL,
+	double snapOnVertexBorder
+)
+{
+	epg::log::ShapeLogger* _shapeLogger = epg::log::ShapeLoggerS::getInstance();
+	epg::Context* context = epg::ContextS::getInstance();
+	params::TransParameters* themeParameters = params::TransParametersS::getInstance();
+	std::string countryCodeName = context->getEpgParameters().getValue(COUNTRY_CODE).toString();
+
+	ign::feature::FeatureFilter filterCL;
+	std::vector<std::string> vCountriesCodeName;
+	epg::tools::StringTools::Split(countryCodeDouble, "#", vCountriesCodeName);
+	for (size_t i = 0; i < vCountriesCodeName.size(); ++i) {
+		epg::tools::FilterTools::addOrConditions(filterCL, countryCodeName + " = '" + vCountriesCodeName [i]+ "'");
+	}
+	ign::feature::FeatureIteratorPtr itCL = _fsTmpCL->getFeatures(filterCL);
+	int numFeatures = context->getDataBaseManager().numFeatures(*_fsTmpCL, filterCL);
+	boost::progress_display display(numFeatures, std::cout, "[ FUSION CONNECTING LINES WITH #]\n");
+
+	std::set<std::string> sCL2Merged;
+	std::string separator = "#";
+
+	while (itCL->hasNext())
+	{
+		++display;
+		ign::feature::Feature fCLCurr = itCL->next();
+
+		std::string idCLCurr = fCLCurr.getId();
+		ign::geometry::LineString lsCurr = fCLCurr.getGeometry().asLineString();
+		std::string countryCodeCLCurr = fCLCurr.getAttribute(countryCodeName).toString();
+
+		if (countryCodeCLCurr.find("#") != std::string::npos)
+			continue;
+
+		if (sCL2Merged.find(idCLCurr) != sCL2Merged.end())
+			continue;
+
+		sCL2Merged.insert(idCLCurr);
+		//std::map<std::string, ign::feature::Feature> mCL2merge;
+		//std::set<std::string> sCountryCode;
+		ign::feature::FeatureFilter filterArroundCL;
+		filterArroundCL.setPropertyConditions(countryCodeName + " != '" + countryCodeCLCurr + "'");
+		filterArroundCL.setExtent(lsCurr.getEnvelope());
+		ign::feature::FeatureIteratorPtr itArroundCL = _fsTmpCL->getFeatures(filterArroundCL);
+		while (itArroundCL->hasNext())
+		{
+			ign::feature::Feature fCLArround = itArroundCL->next();
+			std::string idClArround = fCLArround.getId();
+			ign::geometry::LineString lsClArround = fCLArround.getGeometry().asLineString();
+
+			//si CL deja traite on ne fait rien
+			if (sCL2Merged.find(idClArround) != sCL2Merged.end())
+				continue;
+			std::string countryCodeCLArround = fCLArround.getAttribute(countryCodeName).toString();
+			if (countryCodeCLArround.find("#") != std::string::npos)
+				continue;
+			//si pas d'intersection avec une CL d'un autre pays on ne crée pas de CL merged
+			if (!lsCurr.intersects(lsClArround))
+				continue;
+
+			ign::geometry::Geometry* geomIntersect = lsCurr.Intersection(lsClArround);
+
+			ign::geometry::LineString lsIntersectedCL;
+
+			if (geomIntersect->isLineString()) {
+				lsIntersectedCL = geomIntersect->asLineString();
+			}
+			else if (geomIntersect->isMultiLineString()) {
+				ign::geometry::MultiLineString mlsCLTmp= geomIntersect->asMultiLineString();
+				lsIntersectedCL = mlsCLTmp.geometryN(0).asLineString();
+				for (size_t i = 1; i < mlsCLTmp.numGeometries(); ++i) {
+					ign::geometry::LineString lsCLTmp = mlsCLTmp.geometryN(i).asLineString();
+					//on ne garde pas le 1er pt qui est le même que le dernier de la ls précédente
+					for (size_t j = 1; j < lsCLTmp.numPoints(); ++j) {
+						lsIntersectedCL.addPoint(lsCLTmp.pointN(j));
+					}
+				}
+			}
+			else {
+				std::string geomIntersectTypeName = geomIntersect->getGeometryTypeName();
+				_logger->log(epg::log::WARN, "Intersection between CL " + idClArround + " and " + idCLCurr + " is a " + geomIntersectTypeName);
+				continue;
+			}
+
+			ign::feature::Feature fCLNew = _fsTmpCL->newFeature();
+
+			if(countryCodeCLArround < countryCodeCLCurr) {
+				fCLNew = fCLArround;
+				addFeatAttributeMergingOnBorder(fCLNew, fCLCurr, separator);
+			}
+			else {
+				fCLNew = fCLCurr;
+				addFeatAttributeMergingOnBorder(fCLNew, fCLArround, separator);
+			}
+
+			std::string idCLNew = _idGeneratorCL->next();
+			fCLNew.setId(idCLNew);
+			fCLNew.setGeometry(lsIntersectedCL);
+
+			fCLNew.setAttribute(themeParameters->getValue(CF_STATUS).toString(), ign::data::String("edge_matched"));
+
+			// Patch a supprimer quand la table aura été revue
+			fCLNew.setAttribute("maximum_height", ign::data::Integer(-999));
+			fCLNew.setAttribute("maximum_length", ign::data::Integer(-999));
+			fCLNew.setAttribute("maximum_width", ign::data::Integer(-999));
+			fCLNew.setAttribute("maximum_total_weight", ign::data::Integer(-999));
+			fCLNew.setAttribute("maximum_single_axle_weight", ign::data::Integer(-999));
+			fCLNew.setAttribute("maximum_double_axle_weight", ign::data::Integer(-999));
+			fCLNew.setAttribute("maximum_triple_axle_weight", ign::data::Integer(-999));
+
+			_fsTmpCL->createFeature(fCLNew, idCLNew);
+
+		}
+	}
+
+	_logger->log(epg::log::INFO, "Nb de CL suppr apres merging " + ign::data::Integer(sCL2Merged.size()).toString());
+	for (std::set<std::string>::iterator sit = sCL2Merged.begin(); sit != sCL2Merged.end(); ++sit) {
+		_fsTmpCL->deleteFeature(*sit);
+	}
+
+}
+/*void app::calcul::connectFeatGenerationOp::mergeCL(
 	double distMergeCL,
 	double snapOnVertexBorder
 )
@@ -970,7 +1104,7 @@ void app::calcul::connectFeatGenerationOp::mergeCL(
 	for (std::set<std::string>::iterator sit = sCL2Merged.begin(); sit != sCL2Merged.end(); ++sit) {
 		_fsTmpCL->deleteFeature(*sit);
 	}
-}
+}*/
 
 
 

@@ -47,7 +47,7 @@ namespace calcul{
 
 
 		//void mergeCPNearBy(double distMergeCP, double snapOnVertexBorder);
-		void snapCPNearBy(double distMergeCP, double snapOnVertexBorder);
+		void snapCPNearBy(std::string countryCodeDouble,double distMergeCP, double snapOnVertexBorder);
 
 		bool getNearestCP(ign::feature::Feature fCP,double distMergeCP, std::map < std::string, ign::feature::Feature>& mCPNear);
 
@@ -55,7 +55,8 @@ namespace calcul{
 
 
 
-		void mergeCL(double distMergeCL, double snapOnVertexBorder);
+		//void mergeCL(double distMergeCL, double snapOnVertexBorder);
+		void mergeIntersectingCL(std::string countryCodeDouble, double distMergeCL, double snapOnVertexBorder);
 
 		bool getCLToMerge(ign::feature::Feature fCL, double distMergeCL, std::map < std::string, ign::feature::Feature>& mCL2merge, std::set<std::string>& sCountryCode);
 
