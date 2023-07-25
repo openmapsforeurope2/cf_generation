@@ -1026,6 +1026,7 @@ void app::calcul::connectFeatGenerationOp::mergeIntersectingCL(
 	for (size_t i = 0; i < vCountriesCodeName.size(); ++i) {
 		epg::tools::FilterTools::addOrConditions(filterCL, countryCodeName + " = '" + vCountriesCodeName[i] + "'");
 	}
+	//std::string const natIdName = themeParameters->getValue(NATIONAL_IDENTIFIER).toString();
 	ign::feature::FeatureIteratorPtr itCL = _fsTmpCL->getFeatures(filterCL);
 	int numFeatures = context->getDataBaseManager().numFeatures(*_fsTmpCL, filterCL);
 	boost::progress_display display(numFeatures, std::cout, "[ FUSION CONNECTING LINES WITH #]\n");
@@ -1037,10 +1038,14 @@ void app::calcul::connectFeatGenerationOp::mergeIntersectingCL(
 	{
 		++display;
 		ign::feature::Feature fCLCurr = itCL->next();
-
 		std::string idCLCurr = fCLCurr.getId();
 		ign::geometry::LineString lsCurr = fCLCurr.getGeometry().asLineString();
 		std::string countryCodeCLCurr = fCLCurr.getAttribute(countryCodeName).toString();
+		//debug	
+		/*if (fCLCurr.getAttribute(natIdName).toString() == "TRONROUT0000000057201963")
+			bool bStop = true;
+		else if (fCLCurr.getAttribute(natIdName).toString() == "{39345086-8725-40A8-B240-BFA79AF1BF44}")
+			bool bStop = true;*/
 
 		if (countryCodeCLCurr.find("#") != std::string::npos)
 			continue;
@@ -1061,13 +1066,6 @@ void app::calcul::connectFeatGenerationOp::mergeIntersectingCL(
 			std::string idClArround = fCLArround.getId();
 			ign::geometry::LineString lsClArround = fCLArround.getGeometry().asLineString();
 
-			//debug
-			/*std::string const natIdName = themeParameters->getValue(NATIONAL_IDENTIFIER).toString();
-			if (fCLArround.getAttribute(natIdName).toString() == "TRONROUT0000000057202004")
-				bool bStop = true;
-			else if (fCLArround.getAttribute(natIdName).toString() == "{374C3293-CF7F-413F-B342-20F1FFE369CA}")
-				bool bStop = true;*/ 
-
 			//si CL deja traite on ne fait rien
 			if (sCL2Merged.find(idClArround) != sCL2Merged.end())
 				continue;
@@ -1085,8 +1083,28 @@ void app::calcul::connectFeatGenerationOp::mergeIntersectingCL(
 					|| (ptIntersect == lsCurr.startPoint() && ptIntersect == lsClArround.endPoint())
 					|| (ptIntersect == lsCurr.endPoint() && ptIntersect == lsClArround.startPoint())
 					|| (ptIntersect == lsCurr.endPoint() && ptIntersect == lsClArround.endPoint())
-					)
-					continue;
+					) {
+					ign::math::Vec2d vecLsCurr, vecLsArround;
+					if (ptIntersect == lsCurr.startPoint()) {
+						vecLsCurr.x() = lsCurr.endPoint().x() - lsCurr.startPoint().x();
+						vecLsCurr.y() = lsCurr.endPoint().y() - lsCurr.startPoint().y();
+					}
+					else {
+						vecLsCurr.x() = lsCurr.startPoint().x() - lsCurr.endPoint().x();
+						vecLsCurr.y() = lsCurr.startPoint().y() - lsCurr.endPoint().y();
+					}
+					if (ptIntersect == lsClArround.startPoint()) {
+						vecLsArround.x() = lsClArround.endPoint().x() - lsClArround.startPoint().x();
+						vecLsArround.y() = lsClArround.endPoint().y() - lsClArround.startPoint().y();
+					}
+					else {
+						vecLsArround.x() = lsClArround.startPoint().x() - lsClArround.endPoint().x();
+						vecLsArround.y() = lsClArround.startPoint().y() - lsClArround.endPoint().y();
+					}
+					double anglLs = epg::tools::geometry::angle(vecLsCurr, vecLsArround);
+					if (anglLs > 0.01) //si l'angle est faible, ça peut deux tronçons superposés, s'intersectant en un seul point pour erreur d'arrondi						continue;
+						continue;
+				}	
 			}
 
 			ign::geometry::LineString lsIntersectedCL, lsSE, lsSS, lsES, lsEE;;
@@ -1095,8 +1113,6 @@ void app::calcul::connectFeatGenerationOp::mergeIntersectingCL(
 			getGeomCL(lsSS, lsBorder, lsCurr.startPoint(), lsClArround.startPoint(), snapOnVertexBorder);
 			getGeomCL(lsES, lsBorder, lsCurr.endPoint(), lsClArround.startPoint(), snapOnVertexBorder);
 			getGeomCL(lsEE, lsBorder, lsCurr.endPoint(), lsClArround.endPoint(), snapOnVertexBorder);
-
-
 			
 			lsIntersectedCL = lsCurr;
 			double lengthMin = lsIntersectedCL.length();
