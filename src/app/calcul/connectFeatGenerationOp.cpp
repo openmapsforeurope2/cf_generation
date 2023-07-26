@@ -231,6 +231,7 @@ namespace calcul {
 		double snapOnVertexBorder = 2;
 		double angleMaxBorder = 25;
 		angleMaxBorder = angleMaxBorder * M_PI / 180;
+		double distCLIntersected = 10;
 
 		// Go through objects intersecting the boundary
 		{
@@ -272,7 +273,7 @@ namespace calcul {
 				ign::geometry::algorithm::BufferOpGeos buffOp;
 				ign::geometry::GeometryPtr buffBorder(buffOp.buffer(lsBoundary, distBuffer, 0, ign::geometry::algorithm::BufferOpGeos::CAP_FLAT));
 
-				getCPfromIntersectBorder(lsBoundary);
+				getCPfromIntersectBorder(lsBoundary, distCLIntersected);
 
 				addToUndershootNearBorder(lsBoundary, buffBorder, distBuffer);
 			}
@@ -305,7 +306,7 @@ void app::calcul::connectFeatGenerationOp::getCLfromBorder(
 	epg::Context* context = epg::ContextS::getInstance();
 	std::string const geomName = context->getEpgParameters().getValue(GEOM).toString();
 
-	ign::feature::FeatureFilter filter("ST_INTERSECTS(" + geomName + ", '" + buffBorder->toString() + "')");
+	ign::feature::FeatureFilter filter("ST_INTERSECTS(" + geomName + ", ST_SetSRID(ST_GeomFromText('" + buffBorder->toString() + "'),3035))");
 	epg::tools::FilterTools::addAndConditions(filter, _reqFilterEdges2generateCF);
 	//filter.setExtent(lsBorder.expandBy(distBuffer));
 
@@ -388,7 +389,6 @@ void app::calcul::connectFeatGenerationOp::getCLfromBorder(
 					lengthNearByBuff = 0;
 				}
 			}
-
 		}
 
 		for (size_t i = 0; i < vLsProjectedOnBorder.size(); ++i) {
@@ -415,7 +415,7 @@ void app::calcul::connectFeatGenerationOp::addToUndershootNearBorder(
 	epg::Context* context = epg::ContextS::getInstance();
 	std::string const geomName = context->getEpgParameters().getValue(GEOM).toString();
 
-	ign::feature::FeatureFilter filterBuffBorder("ST_INTERSECTS(" + geomName + ", '" + buffBorder->toString() + "')");
+	ign::feature::FeatureFilter filterBuffBorder("ST_INTERSECTS(" + geomName + ", ST_SetSRID(ST_GeomFromText('" + buffBorder->toString() + "'),3035))");
 	epg::tools::FilterTools::addAndConditions(filterBuffBorder, _reqFilterEdges2generateCF);
 
 	ign::feature::FeatureIteratorPtr eit = _fsEdge->getFeatures(filterBuffBorder);
@@ -483,7 +483,8 @@ void app::calcul::connectFeatGenerationOp::addToUndershootNearBorder(
 
 		if (ptClosestBorder.distance(projPt) > 2 * distBuffer)
 			continue;
-		if (isEdgeIntersectedPtWithCL(fEdge, projPt))
+		double distCLIntersected = 2 * distBuffer;
+		if (isEdgeIntersectedPtWithCL(fEdge, projPt, distCLIntersected))
 			continue;
 
 		projPt.setZ(0);
@@ -504,13 +505,14 @@ void app::calcul::connectFeatGenerationOp::addToUndershootNearBorder(
 
 
 void app::calcul::connectFeatGenerationOp::getCPfromIntersectBorder(
-	ign::geometry::LineString & lsBorder
+	ign::geometry::LineString & lsBorder,
+	double distCLIntersected
 )
 {
 	epg::Context* context = epg::ContextS::getInstance();
 	std::string const geomName = context->getEpgParameters().getValue(GEOM).toString();
 
-	ign::feature::FeatureFilter filterFeaturesToMatch("ST_INTERSECTS(" + geomName + ", '" + lsBorder.toString() + "')");
+	ign::feature::FeatureFilter filterFeaturesToMatch("ST_INTERSECTS(" + geomName + ", ST_SetSRID(ST_GeomFromText('" + lsBorder.toString() + "'),3035))");
 	epg::tools::FilterTools::addAndConditions(filterFeaturesToMatch, _reqFilterEdges2generateCF);
 	ign::feature::FeatureIteratorPtr itFeaturesToMatch = _fsEdge->getFeatures(filterFeaturesToMatch);
 
@@ -533,7 +535,7 @@ void app::calcul::connectFeatGenerationOp::getCPfromIntersectBorder(
 		if (geomPtr->isPoint())
 		{
 			//si l'edge sert à une CL et, ne pas créer de CP?
-			bool isConnectedToCL = isEdgeIntersectedPtWithCL(fToMatch, geomPtr->asPoint());
+			bool isConnectedToCL = isEdgeIntersectedPtWithCL(fToMatch, geomPtr->asPoint(), distCLIntersected);
 			if (!isConnectedToCL) {
 				fCF.setGeometry(geomPtr->asPoint());
 				std::string idCP = _idGeneratorCP->next();
@@ -551,7 +553,7 @@ void app::calcul::connectFeatGenerationOp::getCPfromIntersectBorder(
 				{
 					ign::geometry::Point ptIntersect = geomCollect.geometryN(i).asPoint();
 					
-					bool isConnectedToCL = isEdgeIntersectedPtWithCL(fToMatch, ptIntersect);
+					bool isConnectedToCL = isEdgeIntersectedPtWithCL(fToMatch, ptIntersect, distCLIntersected);
 					if (!isConnectedToCL) {
 						fCF.setGeometry(ptIntersect);
 						std::string idCP = _idGeneratorCP->next();
@@ -604,12 +606,13 @@ void app::calcul::connectFeatGenerationOp::getGeomCL(
 
 bool app::calcul::connectFeatGenerationOp::isEdgeIntersectedPtWithCL(
 	ign::feature::Feature& fEdge,
-	ign::geometry::Point ptIntersectBorder
+	ign::geometry::Point ptIntersectBorder,
+	double distCLIntersected 
 )
 {
 	std::string idLinkedEdge = fEdge.getAttribute("w_national_identifier").toString();
 	ign::feature::FeatureFilter filterIntersectCL ("w_national_identifier like '%" + idLinkedEdge +"%'");
-	filterIntersectCL.setExtent(ptIntersectBorder.getEnvelope().expandBy(1));
+	filterIntersectCL.setExtent(ptIntersectBorder.getEnvelope().expandBy(distCLIntersected));
 	ign::feature::FeatureIteratorPtr itIntersectedCL = _fsTmpCL->getFeatures(filterIntersectCL);
 
 	if (itIntersectedCL->hasNext()) {

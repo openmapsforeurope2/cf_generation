@@ -39,11 +39,11 @@ namespace calcul{
 
 		void addToUndershootNearBorder(ign::geometry::LineString & lsBorder, ign::geometry::GeometryPtr& buffBorder, double distBuffer);
 
-		void getCPfromIntersectBorder(ign::geometry::LineString & lsBorder);
+		void getCPfromIntersectBorder(ign::geometry::LineString & lsBorder, double distCLIntersected);
 
 
 
-		bool isEdgeIntersectedPtWithCL(ign::feature::Feature& fEdge, ign::geometry::Point ptIntersectBorder);
+		bool isEdgeIntersectedPtWithCL(ign::feature::Feature& fEdge, ign::geometry::Point ptIntersectBorder, double distCLIntersected);
 
 
 		//void mergeCPNearBy(double distMergeCP, double snapOnVertexBorder);
