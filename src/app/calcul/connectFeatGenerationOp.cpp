@@ -191,7 +191,18 @@ namespace calcul {
 	void connectFeatGenerationOp::getCountryCodeDoubleFromCC(std::string countryCC, std::set<std::string>& sCountryCodeDouble)
 	{
 		//recup des icc pour un pays
-
+		epg::Context* context = epg::ContextS::getInstance();
+		std::string countryCodeName = context->getEpgParameters().getValue(COUNTRY_CODE).toString();
+		ign::feature::FeatureIteratorPtr itBoundary = _fsBoundary->getFeatures(ign::feature::FeatureFilter(countryCodeName + " like '%" + countryCC + "%' and "+ countryCodeName + " like '%#%'"));
+		while (itBoundary->hasNext())
+		{
+			ign::feature::Feature fBoundary = itBoundary->next();
+			std::string boundaryType = fBoundary.getAttribute("boundary_type").toString();
+			if (boundaryType != "international_boundary" && boundaryType.find("coastline_sea_limit") == -1)
+				continue;
+			std::string  countryCodeBoundary=fBoundary.getAttribute(countryCodeName).toString();
+			sCountryCodeDouble.insert(countryCodeBoundary);
+		}
 
 	}
 
@@ -1191,7 +1202,7 @@ void app::calcul::connectFeatGenerationOp::mergeIntersectingCL(
 		}
 	}
 
-	_logger->log(epg::log::INFO, "Nb de CL suppr apres merging " + ign::data::Integer(sCL2Merged.size()).toString());
+	//_logger->log(epg::log::INFO, "Nb de CL suppr apres merging " + ign::data::Integer(sCL2Merged.size()).toString());
 	for (std::set<std::string>::iterator sit = sCL2Merged.begin(); sit != sCL2Merged.end(); ++sit) {
 		_fsTmpCL->deleteFeature(*sit);
 	}
