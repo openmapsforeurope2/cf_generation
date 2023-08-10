@@ -24,6 +24,7 @@
 		CF_STATUS,
 
 		LIST_ATTR_TO_CONCAT,
+		LIST_ATTR_W,
 
 		SQL_FILTER_EDGES_2_GENERATE_CF
 
@@ -52,6 +53,7 @@ namespace params{
 				_initParameter(CF_STATUS, "CF_STATUS");
 
 				_initParameter(LIST_ATTR_TO_CONCAT, "LIST_ATTR_TO_CONCAT");
+				_initParameter(LIST_ATTR_W, "LIST_ATTR_W");
 
 				_initParameter(SQL_FILTER_EDGES_2_GENERATE_CF, "SQL_FILTER_EDGES_2_GENERATE_CF");
 			}

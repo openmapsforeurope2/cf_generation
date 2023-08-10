@@ -83,7 +83,9 @@ namespace calcul{
 		epg::sql::tools::IdGeneratorInterfacePtr _idGeneratorCP;
 		epg::sql::tools::IdGeneratorInterfacePtr _idGeneratorCL;
 
-		std::set<std::string> _sAttrNameToConcat;//set?
+		std::set<std::string> _sAttrNameToConcat;
+		std::set<std::string> _sAttrNameW;
+		
 
 	};
 

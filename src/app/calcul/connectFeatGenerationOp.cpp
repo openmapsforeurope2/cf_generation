@@ -105,6 +105,15 @@ namespace calcul {
 			_sAttrNameToConcat.insert(_vAttrNameToConcat[i]);
 		}
 
+		///recuperation de la liste des attributs à concatener dans la fusion des attributs
+		std::string listAttrWName = themeParameters->getValue(LIST_ATTR_W).toString();
+		//on recup les attribut a concat et on les mets dans un vecteur en splitant
+		std::vector<std::string> _vAttrNameW;
+		epg::tools::StringTools::Split(listAttrWName, "/", _vAttrNameW);
+		for (size_t i = 0; i < _vAttrNameW.size(); ++i) {
+			_sAttrNameW.insert(_vAttrNameW[i]);
+		}
+
 
 		///recuperation des features
 		std::string const boundaryTableName = epg::utils::replaceTableName(context->getEpgParameters().getValue(TARGET_BOUNDARY_TABLE).toString());
@@ -138,7 +147,7 @@ namespace calcul {
 				<< "ALTER TABLE " << cpTableName << " ALTER COLUMN "
 				<< countryCodeName << " type varchar(255);"
 				<< "ALTER TABLE " << cpTableName << " ALTER COLUMN "
-				<< "w_national_identifier" << " type varchar(25555);"
+				<< "w_national_identifier" << " type varchar(255);"
 				<< "ALTER TABLE " << cpTableName << " ALTER COLUMN "
 				<< "national_road_code" << " type varchar(255);"
 				<< "ALTER TABLE " << cpTableName << " ALTER COLUMN "
@@ -163,13 +172,16 @@ namespace calcul {
 				<< "ALTER TABLE " << clTableName << " ALTER COLUMN "
 				<< countryCodeName << " type varchar(255);"
 				<< "ALTER TABLE " << clTableName << " ALTER COLUMN "
-				<< "w_national_identifier" << " type varchar(25555);"
+				<< "w_national_identifier" << " type varchar(255);"
 				<< "ALTER TABLE " << clTableName << " ALTER COLUMN "
 				<< "national_road_code" << " type varchar(255);"
 				<< "ALTER TABLE " << clTableName << " ALTER COLUMN "
 				<< "european_route_number" << " type varchar(255);"
 				<< "ALTER TABLE " << clTableName << " ADD COLUMN "
 				<< themeParameters->getValue(CF_STATUS).toString() << " cf_status_value default 'not_edge_matched';";
+			//patch pour ne pas avoir des enums et eviter les soucis lors de la fusion des attributs	
+			for (std::set<std::string>::iterator sit = _sAttrNameToConcat.begin(); sit != _sAttrNameToConcat.end(); ++sit)
+				ss << "ALTER TABLE " << clTableName << " ALTER COLUMN " << *sit << " TYPE character varying(255);";
 			context->getDataBaseManager().getConnection()->update(ss.str());
 		}
 
@@ -840,17 +852,8 @@ void app::calcul::connectFeatGenerationOp::addFeatAttributeMergingOnBorder(
 
 	for (size_t i = 0; i < vAttrNames.size(); ++i) {
 		std::string attrName = vAttrNames[i];
-		//std::string typeName = featMerged.getAttribute(attrName).getTypeName();
-		//faire une liste des attr de travail?
-		if (attrName == featTypMerged.getIdName() || attrName == featTypMerged.getDefaultGeometryName()
-			 || attrName == "begin_lifespan_version" || attrName == "end_lifespan_version"
-			|| attrName == "valid_from" || attrName == "valid_to"
-			|| attrName == "w_calcul" || attrName == "net_type"
-			|| attrName == "w_step" 
-			//|| attrName.find("w_") != std::string::npos 
-			)//attribut en timestamp qui sont pour l'historisation
+		if (_sAttrNameW.find(attrName) != _sAttrNameW.end()) //on ne fusionne pas les attributs de travail
 			continue;
-
 		std::string attrValueToMerge = featMerged.getAttribute(attrName).toString();
 		std::string attrValueToAdd = featAttrToAdd.getAttribute(attrName).toString();
 		if (_sAttrNameToConcat.find(attrName) != _sAttrNameToConcat.end()) {
@@ -858,12 +861,12 @@ void app::calcul::connectFeatGenerationOp::addFeatAttributeMergingOnBorder(
 			//si même valeur on garde une fois sinon # dans l'ordre des countrycode
 
 			//TODO: organiser par ordre de country
-		if (attrValueToMerge == "null")
-			attrValueMerged = attrValueToAdd;
-		else if (attrValueToAdd == "null")
-			attrValueMerged = attrValueToMerge;
-		else	
-			attrValueMerged = attrValueToMerge + separator + attrValueToAdd;
+			if (attrValueToMerge == "null")
+				attrValueMerged = attrValueToAdd;
+			else if (attrValueToAdd == "null")
+				attrValueMerged = attrValueToMerge;
+			else	
+				attrValueMerged = attrValueToMerge + separator + attrValueToAdd;
 		}
 		else {//si même valeur on garde, sinon on laisse vide "" dans le cas des enums
 			if (attrValueToMerge == attrValueToAdd)
@@ -874,10 +877,8 @@ void app::calcul::connectFeatGenerationOp::addFeatAttributeMergingOnBorder(
 				attrValueMerged = attrValueToMerge;
 			else
 				continue;// attrValueMerged = "";
-		}
-		
+		}		
 		featMerged.setAttribute(attrName,ign::data::String(attrValueMerged));
-
 	}
 }
 
