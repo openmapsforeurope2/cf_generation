@@ -182,6 +182,10 @@ namespace calcul {
 			//patch pour ne pas avoir des enums et eviter les soucis lors de la fusion des attributs	
 			for (std::set<std::string>::iterator sit = _sAttrNameToConcat.begin(); sit != _sAttrNameToConcat.end(); ++sit)
 				ss << "ALTER TABLE " << clTableName << " ALTER COLUMN " << *sit << " TYPE character varying(255);";
+			//ss << "CREATE TRIGGER ome2_reduce_precision_2d_trigger BEFORE INSERT OR UPDATE ON " << clTableName << " FOR EACH ROW EXECUTE FUNCTION public.ome2_reduce_precision_2d_trigger_function();";
+
+				
+				
 			context->getDataBaseManager().getConnection()->update(ss.str());
 		}
 
@@ -848,36 +852,21 @@ void app::calcul::connectFeatGenerationOp::addFeatAttributeMergingOnBorder(
 	//test si featTyp1 == featTyp2 sinon msg d'erreur
 	std::vector<std::string> vAttrNames;
 	featTypMerged.getAttributeNames(vAttrNames);
-	std::string attrValueMerged;
 
 	for (size_t i = 0; i < vAttrNames.size(); ++i) {
+		std::string attrValueMerged;
 		std::string attrName = vAttrNames[i];
 		if (_sAttrNameW.find(attrName) != _sAttrNameW.end()) //on ne fusionne pas les attributs de travail
 			continue;
 		std::string attrValueToMerge = featMerged.getAttribute(attrName).toString();
 		std::string attrValueToAdd = featAttrToAdd.getAttribute(attrName).toString();
-		if (_sAttrNameToConcat.find(attrName) != _sAttrNameToConcat.end()) {
-			//fichier param qui précise le type où on concat avec un  # lister les attributs (country, et num route eur et national)
-			//si même valeur on garde une fois sinon # dans l'ordre des countrycode
-
-			//TODO: organiser par ordre de country
-			if (attrValueToMerge == "null")
-				attrValueMerged = attrValueToAdd;
-			else if (attrValueToAdd == "null")
-				attrValueMerged = attrValueToMerge;
-			else	
-				attrValueMerged = attrValueToMerge + separator + attrValueToAdd;
-		}
-		else {//si même valeur on garde, sinon on laisse vide "" dans le cas des enums
-			if (attrValueToMerge == attrValueToAdd)
-				attrValueMerged = attrValueToMerge;
-			else if (attrValueToMerge == "null")
-				attrValueMerged = attrValueToAdd;
-			else if (attrValueToAdd == "null")
-				attrValueMerged = attrValueToMerge;
-			else
-				continue;// attrValueMerged = "";
-		}		
+		if (attrName == "vertical_level")
+			bool bt = true;
+		if (attrValueToMerge != attrValueToAdd)
+			attrValueMerged = attrValueToMerge + separator + attrValueToAdd;
+		else
+			attrValueMerged = attrValueToMerge;
+	
 		featMerged.setAttribute(attrName,ign::data::String(attrValueMerged));
 	}
 }
@@ -1041,7 +1030,7 @@ void app::calcul::connectFeatGenerationOp::mergeIntersectingCL(
 	for (size_t i = 0; i < vCountriesCodeName.size(); ++i) {
 		epg::tools::FilterTools::addOrConditions(filterCL, countryCodeName + " = '" + vCountriesCodeName[i] + "'");
 	}
-	//std::string const natIdName = themeParameters->getValue(NATIONAL_IDENTIFIER).toString();
+	std::string const natIdName = themeParameters->getValue(NATIONAL_IDENTIFIER).toString();
 	ign::feature::FeatureIteratorPtr itCL = _fsTmpCL->getFeatures(filterCL);
 	int numFeatures = context->getDataBaseManager().numFeatures(*_fsTmpCL, filterCL);
 	boost::progress_display display(numFeatures, std::cout, "[ FUSION CONNECTING LINES WITH #]\n");
@@ -1057,11 +1046,10 @@ void app::calcul::connectFeatGenerationOp::mergeIntersectingCL(
 		ign::geometry::LineString lsCurr = fCLCurr.getGeometry().asLineString();
 		std::string countryCodeCLCurr = fCLCurr.getAttribute(countryCodeName).toString();
 		//debug	
-		/*if (fCLCurr.getAttribute(natIdName).toString() == "TRONROUT0000000057201963")
+		/*if (fCLCurr.getAttribute(natIdName).toString() == "TRONROUT0000000057243619")
 			bool bStop = true;
-		else if (fCLCurr.getAttribute(natIdName).toString() == "{39345086-8725-40A8-B240-BFA79AF1BF44}")
+		else if (fCLCurr.getAttribute(natIdName).toString() == "{2005FE06-ED7A-4CA6-A011-471ADD678B46}")
 			bool bStop = true;*/
-
 		if (countryCodeCLCurr.find("#") != std::string::npos)
 			continue;
 		if (sCL2Merged.find(idCLCurr) != sCL2Merged.end())
@@ -1080,7 +1068,6 @@ void app::calcul::connectFeatGenerationOp::mergeIntersectingCL(
 			ign::feature::Feature fCLArround = itArroundCL->next();
 			std::string idClArround = fCLArround.getId();
 			ign::geometry::LineString lsClArround = fCLArround.getGeometry().asLineString();
-
 			//si CL deja traite on ne fait rien
 			if (sCL2Merged.find(idClArround) != sCL2Merged.end())
 				continue;
@@ -1088,7 +1075,7 @@ void app::calcul::connectFeatGenerationOp::mergeIntersectingCL(
 			if (countryCodeCLArround.find("#") != std::string::npos)
 				continue;
 			//si pas d'intersection avec une CL d'un autre pays on ne crée pas de CL merged
-			if (lsCurr.distance(lsClArround) > 0 )
+			if (lsCurr.distance(lsClArround) > 0.1 )
 				continue;
 
 			//si intersection uniquement aux extremites des CLs on ne merge pas
@@ -1117,7 +1104,7 @@ void app::calcul::connectFeatGenerationOp::mergeIntersectingCL(
 						vecLsArround.y() = lsClArround.startPoint().y() - lsClArround.endPoint().y();
 					}
 					double anglLs = epg::tools::geometry::angle(vecLsCurr, vecLsArround);
-					if (anglLs > 0.01) //si l'angle est faible, ça peut deux tronçons superposés, s'intersectant en un seul point pour erreur d'arrondi						continue;
+					if (anglLs > 0.01) //si l'angle est faible, ça peut deux tronçons superposés, s'intersectant en un seul point pour erreur d'arrondi
 						continue;
 				}	
 			}
@@ -1131,35 +1118,37 @@ void app::calcul::connectFeatGenerationOp::mergeIntersectingCL(
 			
 			lsIntersectedCL = lsCurr;
 			double lengthMin = lsIntersectedCL.length();
-			if (lsSE.length() < lengthMin && lsSE.length()> 1 ) {//on s'assure que la section de frontière n'est pas nulle et que les projections ne se sont pas snappés au même endroit sur la frontière
+			//debug
+			double testLength = lsSE.length();
+			if (lsSE.length() < lengthMin && lsSE.length()> 0.1 ) {//on s'assure que la section de frontière n'est pas nulle et que les projections ne se sont pas snappés au même endroit sur la frontière
 				int numSegSE = static_cast<int>(std::floor(lsSE.numSegments() / 2.));
 				ign::geometry::Point ptIntLsSE = epg::tools::geometry::interpolate(lsSE, numSegSE, 0.5);
-				if (ptIntLsSE.distance(lsCurr) < 0.1 //on s'assure que la section est bien l'intersection et non le complement
-					&& ptIntLsSE.distance(lsClArround) < 0.1) {
+				if (ptIntLsSE.distance(lsCurr) < 0.01 //on s'assure que la section est bien l'intersection et non le complement
+					&& ptIntLsSE.distance(lsClArround) < 0.01) {
 					lsIntersectedCL = lsSE;
 					lengthMin = lsIntersectedCL.length();
 				}
 			}
-			if (lsSS.length() < lengthMin && lsSS.length() > 1 ) {
+			if (lsSS.length() < lengthMin && lsSS.length() > 0.1 ) {
 				int numSegSS = static_cast<int>(std::floor(lsSS.numSegments() / 2.));
 				ign::geometry::Point ptIntLsSS = epg::tools::geometry::interpolate(lsSS, numSegSS, 0.5);
-				if (ptIntLsSS.distance(lsCurr) < 0.1 && ptIntLsSS.distance(lsClArround) < 0.1) {
+				if (ptIntLsSS.distance(lsCurr) < 0.01 && ptIntLsSS.distance(lsClArround) < 0.01) {
 					lsIntersectedCL = lsSS;
 					lengthMin = lsIntersectedCL.length();
 				}
 			}
-			if (lsES.length() < lengthMin && lsES.length() > 1){
+			if (lsES.length() < lengthMin && lsES.length() > 0.1){
 				int numSegES = static_cast<int>(std::floor(lsES.numSegments() / 2.));
 				ign::geometry::Point ptIntLsES = epg::tools::geometry::interpolate(lsES, numSegES, 0.5);
-				if (ptIntLsES.distance(lsCurr) < 0.1 && ptIntLsES.distance(lsClArround) < 0.1) {
+				if (ptIntLsES.distance(lsCurr) < 0.01 && ptIntLsES.distance(lsClArround) < 0.01) {
 					lsIntersectedCL = lsES;
 					lengthMin = lsIntersectedCL.length();
 				}
 			}
-			if (lsEE.length() < lengthMin && lsEE.length() > 1 ){
+			if (lsEE.length() < lengthMin && lsEE.length() > 0.1 ){
 				int numSegEE = static_cast<int>(std::floor(lsEE.numSegments() / 2.));
 				ign::geometry::Point ptIntLsEE = epg::tools::geometry::interpolate(lsEE, numSegEE, 0.5);
-				if (ptIntLsEE.distance(lsCurr) < 0.1 && ptIntLsEE.distance(lsClArround) < 0.1) {
+				if (ptIntLsEE.distance(lsCurr) < 0.01 && ptIntLsEE.distance(lsClArround) < 0.01) {
 					lsIntersectedCL = lsEE;
 					lengthMin = lsIntersectedCL.length();
 				}
