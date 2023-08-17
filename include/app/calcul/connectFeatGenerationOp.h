@@ -62,6 +62,8 @@ namespace calcul{
 
 
 		void getBorderFromEdge(ign::geometry::LineString& lsEdgeOnBorder, ign::geometry::LineString& lsBorder);
+
+		void cleanEdgesOutOfCountry(std::string countryCC);
 		
 	private:
 		ign::feature::sql::FeatureStorePostgis* _fsEdge;
