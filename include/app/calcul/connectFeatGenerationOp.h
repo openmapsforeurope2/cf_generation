@@ -37,7 +37,7 @@ namespace calcul{
 		void getGeomCL(ign::geometry::LineString& lsCL, ign::geometry::LineString& lsBorder, ign::geometry::Point ptStartToProject, ign::geometry::Point ptEndToProject, double snapOnVertexBorder);
 	
 
-		void addToUndershootNearBorder(ign::geometry::LineString & lsBorder, ign::geometry::GeometryPtr& buffBorder, double distBuffer);
+		void addToUndershootNearBorder(ign::geometry::LineString & lsBorder, ign::geometry::GeometryPtr& buffBorder, double distUnderShoot);
 
 		void getCPfromIntersectBorder(ign::geometry::LineString & lsBorder, double distCLIntersected);
 
@@ -64,12 +64,23 @@ namespace calcul{
 		void getBorderFromEdge(ign::geometry::LineString& lsEdgeOnBorder, ign::geometry::LineString& lsBorder);
 
 		void cleanEdgesOutOfCountry(std::string countryCC);
+
+		void cleanAntennasOutOfCountry(std::string countryCC);
+
+		bool isNextEdgeInAntennas(ign::feature::Feature& fEdge, ign::geometry::Point& ptCurr, ign::feature::Feature&  edgeNext, ign::geometry::Point& ptNext);
+
+		void updateGeomCL(std::string countryCodeDouble, double snapOnVertexBorder);
+
+		void deleteCLUnderThreshold(std::string countryCodeDouble);
+
+		void getGeomCountry(std::string countryCodeSimple, ign::geometry::MultiPolygon& geomCountry);
 		
 	private:
 		ign::feature::sql::FeatureStorePostgis* _fsEdge;
 		ign::feature::sql::FeatureStorePostgis* _fsBoundary;
-		ign::feature::sql::FeatureStorePostgis* _fsTmpCP;
-		ign::feature::sql::FeatureStorePostgis* _fsTmpCL;
+		ign::feature::sql::FeatureStorePostgis* _fsLandmask;
+		ign::feature::sql::FeatureStorePostgis* _fsCP;
+		ign::feature::sql::FeatureStorePostgis* _fsCL;
 
 		//ign::feature::FeatureFilter _filterEdges2generateCF;
 		std::string _reqFilterEdges2generateCF;

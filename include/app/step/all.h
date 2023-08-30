@@ -7,7 +7,7 @@
 namespace app{
 namespace step{
 
-	class AllTrans : public epg::step::StepBase< params::TransParametersS > {
+	class AllTrans : public epg::step::StepBase< params::ThemeParametersS > {
 
 	public:
 

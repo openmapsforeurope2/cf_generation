@@ -10,7 +10,7 @@
 namespace app{
 namespace step{
 
-	class TmpCFGeneration : public epg::step::StepBase< params::TransParametersS > {
+	class TmpCFGeneration : public epg::step::StepBase< params::ThemeParametersS > {
 
 	public:
 

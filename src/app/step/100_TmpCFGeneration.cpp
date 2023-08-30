@@ -42,8 +42,8 @@ namespace step {
 	void TmpCFGeneration::init()
 	{
 		addWorkingEntity(SOURCE_ROAD_TABLE);
-		addWorkingEntity(TMP_CP_TABLE);
-		addWorkingEntity(TMP_CL_TABLE);
+		addWorkingEntity(CP_TABLE);
+		addWorkingEntity(CL_TABLE);
 	}
 
 
@@ -120,7 +120,7 @@ namespace step {
 
 
 		// Create tmp_cf table
-		std::string tmpCpTableName = getCurrentWorkingTableName(TMP_CP_TABLE);
+		std::string tmpCpTableName = getCurrentWorkingTableName(CP_TABLE);
 
 		std::ostringstream ss;
 		ss << "DROP TABLE IF EXISTS " << tmpCpTableName << " ;"
@@ -139,7 +139,7 @@ namespace step {
 		_context.getDataBaseManager().getConnection()->update(ss.str());
 
 		// Create tmp_cf table
-		std::string tmpClTableName = getCurrentWorkingTableName(TMP_CL_TABLE);
+		std::string tmpClTableName = getCurrentWorkingTableName(CL_TABLE);
 
 		ss.clear();
 		ss << "DROP TABLE IF EXISTS " << tmpClTableName << " ;"

@@ -23,7 +23,7 @@ int main(int argc, char *argv[])
 
 	std::string     logDirectory = "";
 	std::string     epgParametersFile = "";
-	std::string     transParametersFile = "";
+	std::string     ThemeParametersFile = "";
 	std::string     countryCode = "";
 	bool            verbose = true;
 
@@ -82,9 +82,9 @@ int main(int argc, char *argv[])
 		context->setLogDirectory(logDirectory);
 
 		//theme parameters
-		transParametersFile = context->getConfigParameters().getValue(THEME_PARAMETER_FILE).toString();
-		app::params::TransParameters* transParameters = app::params::TransParametersS::getInstance();
-		epg::params::tools::loadParams(*transParameters, transParametersFile);
+		ThemeParametersFile = context->getConfigParameters().getValue(THEME_PARAMETER_FILE).toString();
+		app::params::ThemeParameters* ThemeParameters = app::params::ThemeParametersS::getInstance();
+		epg::params::tools::loadParams(*ThemeParameters, ThemeParametersFile);
 
 		//lancement du traitement
 		app::calcul::connectFeatGenerationOp::compute(countryCode, verbose);
@@ -109,7 +109,7 @@ int main(int argc, char *argv[])
 
 	epg::ContextS::kill();
 	epg::log::EpgLoggerS::kill();;
-	app::params::TransParametersS::kill();;
+	app::params::ThemeParametersS::kill();;
 
 	logFile.close();
 
